@@ -134,7 +134,6 @@ def resolve_pair(symbol):
         if v in PAIR_CACHE:
             return PAIR_CACHE[v]
     # Don't rebuild every time; just warn
-    print(Fore.RED + f"❌ Unknown symbol: {symbol}. Consider refreshing pair cache.")
     return None
 
 # =======================
