@@ -1,3 +1,4 @@
+
 import time
 import pandas as pd
 from datetime import datetime, timezone
@@ -12,7 +13,6 @@ import json
 # =======================
 init(autoreset=True)
 
-# <-- use your actual keys here (you provided them earlier) -->
 api_key = "NBcae3Tbuc3qupKsDDUX4yiuHCx9qZriNpRy7waABK28hZ9PDULthpWe"
 api_secret = "ZOOOjkYN4W9vIBBH7p/ji+qdy9SQuJyvaZ+7911ELMJTETy/ibI+SC9vanb3+1TcVI5aLM0Z1hoURhFmCdNSbg=="
 kraken = krakenex.API(key=api_key, secret=api_secret)
@@ -24,80 +24,26 @@ PAIR_CACHE_FILE = "kraken_pairs.json"
 # =======================
 # Strategy parameters
 # =======================
-symbols = [
-"CELOUSD","HPOS10IUSD","APUUSD","PROMPTUSD","STBLUSD","MCUSD","KMNOUSD","RIZEUSD","SPXUSD","OPENUSD",
-"UNITEUSD","SDNUSD","CXTUSD","TRACUSD","SCRTUSD","VERSEUSD","HUSD","XPLUSD","FARTCOINUSD","MXCUSD",
-"STEPUSD","CLANKERUSD","JAILSTOOLUSD","PYTHUSD","RETARDIOUSD","NODLUSD","ASTRUSD","ORDERUSD","CAMPUSD","KEYUSD",
-"ACAUSD","USDUCUSD","MNTUSD","EPTUSD","PENGUUSD","DRIFTUSD","QUSD","BDXNUSD","MERLUSD","CHEEMSUSD",
-"BMTUSD","BITUSD","KERNELUSD","NOSUSD","DBRUSD","LOFIUSD","LOCKINUSD","TITCOINUSD","SGBUSD","APTUSD",
-"TREMPUSD","ALICEUSD","REZUSD","MOVEUSD","SOGNIUSD","GOMININGUSD","COWUSD","HONEYUSD","XTZUSD","FISUSD",
-"KINTUSD","ARUSD","B3USD","SUNDOGUSD","INITUSD","STRDUSD","FWOGUSD","WUSD","XNYUSD","CQTUSD",
-"PORTALUSD","MICHIUSD","DEGENUSD","FHEUSD","UFDUSD","ATHUSD","KTAUSD","TACUSD","OMGUSD","WINUSD",
-"MVUSD","SWARMSUSD","FFUSD","TREEUSD","SLAYUSD","BERTUSD","MINAUSD","PROUSD","WMTXUSD","BLZUSD",
-"PUPSUSD","WIFUSD","CFGUSD","CHEXUSD","MIRRORUSD","ZEUSUSD","WELLUSD","AI16ZUSD","BODENUSD","STRKUSD",
-"VVVUSD","EULUSD","MOONUSD","TUSDUSD","ICPUSD","ZETAUSD","MASKUSD","TOKEUSD","UNFIUSD","CTCUSD",
-"NEARUSD","OGNUSD","AURAUSD","REQUSD","LOBOUSD","XANUSD","NPCUSD","CLOUDUSD","AAVEUSD","SNEKUSD",
-"DOGEUSD","SAMOUSD","ALGOUSD","JOEUSD","BCHUSD","OXYUSD","XCNUSD","GUSD","SKYUSD","MORPHOUSD",
-"ATOMUSD","DRVUSD","XLMUSD","UNIUSD","SHIBUSD","SSVUSD","USDDUSD","OMUSD","WBTCUSD","BSXUSD",
-"BNBUSD","AIOZUSD","AEROUSD","ANKRUSD","LCAPUSD","BTCUSD","CHRUSD","TRUMPUSD","TBTCUSD","SEIUSD",
-"BTTUSD","XYOUSD","INJUSD","HOUSEUSD","RARIUSD","ALTUSD","PARTIUSD","TIAUSD","XRPUSD","PEPEUSD",
-"SRMUSD","KARUSD","EGLDUSD","HIPPOUSD","GIGAUSD","LSSOLUSD","ETHUSD","FILUSD","POLUSD","QIUSD",
-"PDAUSD","SOLUSD","TEERUSD","BADGERUSD","CLVUSD","TRXUSD","ANLOGUSD","ADXUSD","SAPIENUSD","QTUMUSD",
-"KSMUSD","GNOUSD","COMPUSD","LSETHUSD","NOTUSD","SUSHIUSD","AGLDUSD","ZEREBROUSD","ENAUSD","BNTUSD",
-"BIGTIMEUSD","SUSD","SYRUPUSD","PTBUSD","APENFTUSD","SUNUSD","SOSOUSD","MATUSD","GAIAUSD","AUSD",
-"FIDAUSD","ZRXUSD","ARBUSD","LINKUSD","XAUTUSD","CMETHUSD","POPCATUSD","ACXUSD","GBPUSD","CCDUSD",
-"DASHUSD","EURQUSD","XL1USD","PYUSDUSD","ETCUSD","MULTIUSD","USDRUSD","EURCUSD","USDQUSD","USDGUSD",
-"USDCUSD","STXUSD","RLUSDUSD","USD1USD","USDTUSD","USDEUSD","MSOLUSD","XIONUSD","FETUSD","DAIUSD",
-"ESUSD","EURUSD","PAXGUSD","RUNEUSD","CROUSD","SXTUSD","ARKMUSD","UUSD","METHUSD","FLOWUSD",
-"SCUSD","NEIROUSD","EUROPUSD","IDEXUSD","ABUSD","SWEATUSD","RENDERUSD","AUDUSD","CPOOLUSD","ICXUSD",
-"RAYUSD","KETUSD","OSMOUSD","LTCUSD","MOODENGUSD","DUCKUSD","HBARUSD","MANAUSD","STORJUSD","SUIUSD",
-"BALUSD","USDSUSD","ONDOUSD","MOCAUSD","HMSTRUSD","BONDUSD","ADAUSD","AIRUSD","ALCXUSD","BTRUSD",
-"GOATUSD","EURRUSD","AXSUSD","PLUMEUSD","GALAUSD","GHIBLIUSD","RAREUSD","MELANIAUSD","NYMUSD","DOGSUSD",
-"FORTHUSD","PONDUSD","PNUTUSD","KNCUSD","TONUSD","OXTUSD","SAFEUSD","RADUSD","CVCUSD","ENJUSD",
-"ASRRUSD","GRIFFAINUSD","YFIUSD","MIMUSD","JUPUSD","OPUSD","TAOUSD","POLSUSD","POLISUSD","OCEANUSD",
-"EWTUSD","DMCUSD","TOSHIUSD","ACHUSD","ODOSUSD","SIGMAUSD","NANOUSD","FLUXUSD","BOBAUSD","ELXUSD",
-"TLMUSD","BANANAS31USD","ZKUSD","AVAXUSD","SONICUSD","GRTUSD","VSNUSD","SYNUSD","MEMEUSD","ALPHAUSD",
-"PHAUSD","ENSUSD","MLNUSD","TOKENUSD","TANSSIUSD","VELODROMEUSD","MIRUSD","MEWUSD","WCTUSD","FLRUSD",
-"JTOUSD","SPELLUSD","MUBARAKUSD","ORCAUSD","WALUSD","BATUSD","BLURUSD","JITOSOLUSD","PLAYUSD","LMWRUSD",
-"IMXUSD","GFIUSD","VIRTUALUSD","TURBOUSD","APEUSD","ESXUSD","WLFIUSD","RAIINUSD","LPTUSD","WENUSD",
-"LCXUSD","AVAAIUSD","0GUSD","BONKUSD","MOVRUSD","POWRUSD","UMAUSD","SANDUSD","AKTUSD","DOGUSD",
-"DYMUSD","DEEPUSD","DOTUSD","ARPAUSD","CHZUSD","XDCUSD","BERAUSD","DENTUSD","ACTUSD","2ZUSD",
-"GTCUSD","RENUSD","ATLASUSD","ANONUSD","CELRUSD","GMTUSD","BEAMUSD","AUDIOUSD","IPUSD","HNTUSD",
-"JASMYUSD","PERPUSD","CTSIUSD","AUCTIONUSD","BANDUSD","QNTUSD","LITUSD","DYDXUSD","RBCUSD","SBRUSD",
-"PRCLUSD","GLMRUSD","FLYUSD","BICOUSD","TUSD","XMRUSD","MEUSD","WLDUSD","CRVUSD","TNSRUSD",
-"USUALUSD","SAGAUSD","LSKUSD","RPLUSD","REDUSD","ZROUSD","PUMPUSD","PUFFERUSD","ETHFIUSD","BRICKUSD",
-"RLCUSD","PONKEUSD","PENDLEUSD","NILUSD","SWELLUSD","KINUSD","AIXBTUSD","TRUUSD","LQTYUSD","YGGUSD",
-"CARVUSD","KAITOUSD","GHSTUSD","1INCHUSD","VANRYUSD","STGUSD","BIOUSD","FARMUSD","SPKUSD","LUNA2USD",
-"CVXUSD","KP3RUSD","AEVOUSD","NMRUSD","PROVEUSD","SAHARAUSD","WAXLUSD","SPICEUSD","MIRAUSD","COQUSD",
-"EIGENUSD","SAROSUSD","FLOKIUSD","PEAQUSD","REPV2USD","ETHWUSD","JSTUSD","COTIUSD","LRCUSD","KAVAUSD",
-"REKTUSD","METISUSD","RSRUSD","GUNUSD","XTERUSD","CYBERUSD","KEEPUSD","REPUSD","API3USD","CATUSD",
-"WOOUSD","USTUSD","LDOUSD","BNCUSD","KASUSD","GARIUSD","LAYERUSD","COOKIEUSD","MNGOUSD","BABYUSD",
-"L3USD","HFTUSD","PRIMEUSD","SUPERUSD","ZEXUSD","GMXUSD","HDXUSD","MUSD","NODEUSD","ZIGUSD",
-"AVNTUSD","FXSUSD","EDGEUSD","TVKUSD","NTRNUSD","VINEUSD","SNXUSD","ALKIMIUSD","ALCHUSD","OMNIUSD",
-"RUJIUSD","GRASSUSD","DOLOUSD","MOGUSD","LINEAUSD","SOONUSD","NOBODYUSD","CHILLHOUSEUSD","ZECUSD","C98USD",
-"USELESSUSD","AI3USD","ZORAUSD","ROOKUSD","KOBANUSD","ICNTUSD","TERMUSD","CAKEUSD","GALUSD","PSTAKEUSD",
-"CSMUSD","GSTUSD","ARTUSD","XRTUSD","BLESSUSD","CORNUSD","INTRUSD","AKEUSD","ARCUSD","JUNOUSD"
-]
+symbols = ["0G/USD","1INCH/USD","2Z/USD","AB/USD","ACA/USD","ACH/USD","ACT/USD","ACX/USD","ADX/USD","AEVO/USD","AGLD/USD","AI16Z/USD","AI3/USD","AIOZ/USD","AIR/USD","AIXBT/USD","AKE/USD","AKT/USD","ALCH/USD","ALCX/USD","ALICE/USD","ALKIMI/USD","ALPHA/USD","ALTHEA/USD","ALT/USD","ANKR/USD","ANLOG/USD","ANON/USD","APENFT/USD","API3/USD","APU/USD","ARC/USD","ARKM/USD","ARPA/USD","ART/USD","AR/USD","ASRR/USD","ASTR/USD","ATH/USD","ATLAS/USD","AUCTION/USD","AUDIO/USD","AUD/USD","AURA/USD","A/USD","AVAAI/USD","B2/USD","B3/USD","BABY/USD","BADGER/USD","BAL/USD","BANANAS31/USD","BAND/USD","BDXN/USD","BEAM/USD","BERA/USD","BERT/USD","BICO/USD","BIGTIME/USD","BILLY/USD","BIO/USD","BIT/USD","BLESS/USD","BLZ/USD","BMT/USD","BNC/USD","BNT/USD","BOBA/USD","BODEN/USD","BOND/USD","BRICK/USD","BSX/USD","BTR/USD","BTT/USD","C98/USD","CAKE/USD","CAMP/USD","CARV/USD","CAT/USD","CCD/USD","CELO/USD","CELR/USD","CFG/USD","CHEEMS/USD","CHEX/USD","CHILLHOUSE/USD","CHR/USD","CLANKER/USD","CLOUD/USD","CLV/USD","CMETH/USD","COOKIE/USD","COQ/USD","CORN/USD","COTI/USD","COW/USD","CPOOL/USD","CQT/USD","CRO/USD","CSM/USD","CTC/USD","CTSI/USD","CVC/USD","CVX/USD","CXT/USD","CYBER/USD","DBR/USD","DEEP/USD","DEGEN/USD","DENT/USD","DMC/USD","DOGS/USD","DOLO/USD","DRIFT/USD","DRV/USD","DUCK/USD","DYM/USD","EDGE/USD","EGLD/USD","ELX/USD","ENJ/USD","EPT/USD","ES/USD","ESX/USD","ETHFI/USD","ETHW/USD","EUL/USD","EURC/USD","EUROP/USD","EURQ/USD","EURR/USD","EWT/USD","FARM/USD","FF/USD","FHE/USD","FIDA/USD","FIS/USD","FLUX/USD","FLY/USD","FORTH/USD","FWOG/USD","FXS/USD","GAIA/USD","GAL/USD","GARI/USD","GFI/USD","GHIBLI/USD","GHST/USD","GIGA/USD","GLMR/USD","GMT/USD","GMX/USD","GNO/USD","GOMINING/USD","GRASS/USD","GRIFFAIN/USD","GST/USD","GTC/USD","GUN/USD","G/USD","HBAR/USD","HDX/USD","HFT/USD","HIPPO/USD","HMSTR/USD","HNT/USD","HONEY/USD","HOUSE/USD","HPOS10I/USD","H/USD","ICNT/USD","ICX/USD","IDEX/USD","INIT/USD","INTR/USD","IP/USD","JAILSTOOL/USD","JITOSOL/USD","JOE/USD","JST/USD","JTO/USD","JUNO/USD","KAR/USD","KERNEL/USD","KET/USD","KEY/USD","KGEN/USD","KINT/USD","KIN/USD","KMNO/USD","KOBAN/USD","KP3R/USD","KTA/USD","L3/USD","LAYER/USD","LCAP/USD","LCX/USD","LINEA/USD","LIT/USD","LMWR/USD","LOBO/USD","LOCKIN/USD","LOFI/USD","LPT/USD","LQTY/USD","LSETH/USD","LSK/USD","LSSOL/USD","LUNA2/USD","LUNA/USD","MASK/USD","MAT/USD","MC/USD","MEME/USD","MERL/USD","METH/USD","METIS/USD","ME/USD","MF/USD","MICHI/USD","MIM/USD","MIRA/USD","MIRROR/USD","MIR/USD","MNGO/USD","MNT/USD","MOCA/USD","MOON/USD","MOVE/USD","MOVR/USD","MSOL/USD","MUBARAK/USD","MULTI/USD","M/USD","MV/USD","MXC/USD","MXNB/USD","MYX/USD","NEIRO/USD","NIL/USD","NMR/USD","NOBODY/USD","NODE/USD","NODL/USD","NOS/USD","NOT/USD","NPC/USD","NTRN/USD","NYM/USD","OCEAN/USD","ODOS/USD","OGN/USD","OMNI/USD","OPEN/USD","ORCA/USD","ORDER/USD","OSMO/USD","OXT/USD","OXY/USD","PARTI/USD","PDA/USD","PEAQ/USD","PENDLE/USD","PERP/USD","PHA/USD","PIPE/USD","PLAY/USD","PLUME/USD","PNUT/USD","POLIS/USD","POLS/USD","POND/USD","PONKE/USD","PORTAL/USD","POWR/USD","PRCL/USD","PRIME/USD","PROMPT/USD","PRO/USD","PROVE/USD","PSTAKE/USD","PTB/USD","PUFFER/USD","PUPS/USD","PYUSD/USD","QI/USD","QNT/USD","Q/USD","RAD/USD","RAIIN/USD","RARE/USD","RARI/USD","RBC/USD","RED/USD","REKT/USD","REN/USD","REPV2/USD","REQ/USD","RETARDIO/USD","REZ/USD","RIZE/USD","RLC/USD","RLUSD/USD","ROOK/USD","RPL/USD","RSR/USD","RUJI/USD","SAFE/USD","SAHARA/USD","SAMO/USD","SAPIEN/USD","SAROS/USD","SBR/USD","SCRT/USD","SDN/USD","SGB/USD","SIDEKICK/USD","SIGMA/USD","SKY/USD","SLAY/USD","SNEK/USD","SOGNI/USD","SONIC/USD","SOON/USD","SOSO/USD","SPELL/USD","SPICE/USD","SPK/USD","SRM/USD","SSV/USD","STEP/USD","STG/USD","STORJ/USD","STRD/USD","SUKU/USD","SUNDOG/USD","SUN/USD","SUPER/USD","S/USD","SWARMS/USD","SWEAT/USD","SWELL/USD","SXT/USD","SYN/USD","TAC/USD","TANSSI/USD","TBTC/USD","TEER/USD","TERM/USD","TITCOIN/USD","TLM/USD","TNSR/USD","TOKEN/USD","TOKE/USD","TOSHI/USD","TRAC/USD","TREE/USD","TREMP/USD","TRU/USD","T/USD","TUSD/USD","TVK/USD","UFD/USD","UMA/USD","UNFI/USD","UNITE/USD","USD1/USD","USDD/USD","USDE/USD","USDG/USD","USDQ/USD","USDR/USD","USDS/USD","USDUC/USD","USELESS/USD","UST/USD","USUAL/USD","U/USD","VANRY/USD","VELODROME/USD","VERSE/USD","VINE/USD","VSN/USD","VVV/USD","WAL/USD","WAXL/USD","WBTC/USD","WCT/USD","WELL/USD","WEN/USD","WIN/USD","WMTX/USD","WOO/USD","XAN/USD","XAUT/USD","XDC/USD","XION/USD","XL1/USD","MLN/USD","XMN/USD","XNY/USD","REP/USD","XRT/USD","XTER/USD","XYO/USD","YGG/USD","ZEREBRO/USD","ZETA/USD","EUR/USD","ZEUS/USD","ZEX/USD","GBP/USD","ZIG/USD","ZORA/USD","AAVE/USD","ADA/USD","AERO/USD","ALGO/USD","APE/USD","APT/USD","ARB/USD","ATOM/USD","AVAX/USD","AVNT/USD","AXS/USD","BAT/USD","BCH/USD","BLUR/USD","BNB/USD","BONK/USD","CHZ/USD","COMP/USD","CRV/USD","DAI/USD","DASH/USD","DOG/USD","DOT/USD","DYDX/USD","EIGEN/USD","ENA/USD","ENS/USD","FARTCOIN/USD","FET/USD","FIL/USD","FLOKI/USD","FLOW/USD","FLR/USD","GALA/USD","GOAT/USD","GRT/USD","ICP/USD","IMX/USD","INJ/USD","JASMY/USD","JUP/USD","KAITO/USD","KAS/USD","KAVA/USD","KEEP/USD","KNC/USD","KSM/USD","LDO/USD","LINK/USD","LRC/USD","MANA/USD","MELANIA/USD","MEW/USD","MINA/USD","MOG/USD","MOODENG/USD","MORPHO/USD","NANO/USD","NEAR/USD","OMG/USD","OM/USD","ONDO/USD","OP/USD","PAXG/USD","PENGU/USD","PEPE/USD","POL/USD","POPCAT/USD","PUMP/USD","PYTH/USD","QTUM/USD","RAY/USD","RENDER/USD","RUNE/USD","SAGA/USD","SAND/USD","SC/USD","SEI/USD","SHIB/USD","SNX/USD","SOL/USD","SPX/USD","STBL/USD","STRK/USD","STX/USD","SUI/USD","SUSHI/USD","SYRUP/USD","TAO/USD","TIA/USD","TON/USD","TRUMP/USD","TRX/USD","TURBO/USD","UNI/USD","USDC/USD","USDT/USD","VIRTUAL/USD","WIF/USD","WLD/USD","WLFI/USD","W/USD","XCN/USD","XDG/USD","ETC/USD","ETH/USD","LTC/USD","XPL/USD","XTZ/USD","XBT/USD","XLM/USD","XMR/USD","XRP/USD","ZEC/USD","YFI/USD","ZK/USD","ZRO/USD","ZRX/USD"]  # shortened list for testing
 bollinger_length = 180
 bollinger_std = 3
-position_size_pct = 0.2  # fraction of total portfolio value to target per position (USD exposure)
+position_size_pct = 0.2
 stop_loss_pct = 0.40
 
-# Positions structure:
-# positions[symbol] = [
-#     {entry, volume, entry_time, stop_txid, order_type, take_profit_enabled, strategy_type, tp_points}
-# ]
 positions = {s: [] for s in symbols}
 trades = {s: [] for s in symbols}
 last_scanned = {s: None for s in symbols}
 
 # =======================
-# Kraken pair utilities (caching)
+# Pair cache handling
 # =======================
 def load_pair_cache():
     if os.path.isfile(PAIR_CACHE_FILE):
-        with open(PAIR_CACHE_FILE, "r") as f:
-            return json.load(f)
+        try:
+            with open(PAIR_CACHE_FILE, "r") as f:
+                return json.load(f)
+        except Exception as e:
+            print(Fore.RED + f"⚠️ Pair cache corrupted, rebuilding. ({e})")
     return {}
 
 def save_pair_cache(cache):
@@ -105,7 +51,6 @@ def save_pair_cache(cache):
         json.dump(cache, f, indent=2)
 
 def build_pair_cache():
-    """Fetch all Kraken trading pairs once and store them locally."""
     print(Fore.YELLOW + "🔍 Building Kraken pair cache (AssetPairs)...")
     resp = kraken.query_public("AssetPairs")
     if resp.get("error"):
@@ -113,23 +58,13 @@ def build_pair_cache():
         return {}
     cache = {}
     for pair_name, data in resp["result"].items():
-        # data["base"], data["quote"] are like 'XXBT', 'ZUSD' etc.
         base = data.get("base", "")
         quote = data.get("quote", "")
-        # normalized forms
         base_norm = base.replace("X", "").replace("Z", "")
         quote_norm = quote.replace("X", "").replace("Z", "")
-        # create keys we might be asked for (e.g. CELOUSD, CELO/USD, pair_name)
-        key1 = (base_norm + quote_norm).upper()        # e.g. CELOUSD
-        key2 = f"{base_norm}{quote_norm}".upper()      # same
-        key3 = pair_name.upper()                       # Kraken internal key
-        # map common key to pair_name
+        key1 = (base_norm + quote_norm).upper()
         cache[key1] = pair_name
-        cache[key2] = pair_name
-        cache[key3] = pair_name
-        # also map base-only USD keys if quote is USD
         if quote_norm.upper() == "USD":
-            cache[base_norm.upper() + "USD"] = pair_name
             cache[base_norm.upper()] = pair_name
     save_pair_cache(cache)
     print(Fore.GREEN + f"✅ Pair cache built: {len(cache)} entries")
@@ -140,449 +75,165 @@ if not PAIR_CACHE:
     PAIR_CACHE = build_pair_cache()
 
 def resolve_pair(symbol):
-    """
-    Return Kraken internal pair name for a given friendly symbol (e.g. 'CELOUSD').
-    Tries several fallbacks and optionally rebuilds the cache once.
-    """
     if symbol in PAIR_CACHE:
         return PAIR_CACHE[symbol]
-    # try normalized variants
-    variants = [
-        symbol,
-        symbol.replace("/", "").upper(),
-        symbol.replace("ZUSD", "USD").upper(),
-        symbol.replace("USD", "USD").upper(),
-        symbol.upper()
-    ]
+    variants = [symbol, symbol.replace("/", "").upper()]
     for v in variants:
         if v in PAIR_CACHE:
             return PAIR_CACHE[v]
-    # try rebuild cache once
     PAIR_CACHE.update(build_pair_cache())
     return PAIR_CACHE.get(symbol)
 
 # =======================
-# Helper functions
+# Kraken helpers
 # =======================
 def kraken_private_request(method, data=None):
-    resp = kraken.query_private(method, data or {})
-    return resp
-
-def fetch_ohlc(symbol, interval=240, since=None):
-    pair = resolve_pair(symbol)
-    if not pair:
-        print(Fore.LIGHTRED_EX + f"❌ Unknown pair for OHLC: {symbol}")
-        return None
-    params = {"pair": pair, "interval": interval}
-    if since:
-        params["since"] = since
-    resp = kraken.query_public("OHLC", params)
-    if resp.get("error"):
-        print(Fore.RED + f"Error fetching OHLC for {symbol} ({pair}): {resp['error']}")
-        return None
-    data = list(resp['result'].values())[0]
-    df = pd.DataFrame(data, columns=['time', 'open', 'high', 'low', 'close', 'vwap', 'volume', 'count'])
-    df[['open','high','low','close','volume']] = df[['open','high','low','close','volume']].astype(float)
-    df['time'] = pd.to_datetime(df['time'], unit='s', utc=True)
-    return df
-
-def calculate_bollinger(df):
-    df['mean'] = df['close'].rolling(bollinger_length).mean()
-    df['std'] = df['close'].rolling(bollinger_length).std()
-    df['upper'] = df['mean'] + bollinger_std * df['std']
-    df['lower'] = df['mean'] - bollinger_std * df['std']
-    return df
+    return kraken.query_private(method, data or {})
 
 def get_current_price(symbol):
     pair = resolve_pair(symbol)
     if not pair:
-        print(Fore.LIGHTRED_EX + f"❌ Unknown Kraken pair for price lookup: {symbol}")
+        print(Fore.RED + f"❌ Unknown Kraken pair for {symbol}")
         return None
-    try:
-        resp = kraken.query_public("Ticker", {"pair": pair})
-        if resp.get("error"):
-            # show a concise message but not the long error spam
-            print(Fore.RED + f"Error fetching price for {symbol} ({pair}): {resp['error']}")
-            return None
-        result_key = list(resp["result"].keys())[0]
-        return float(resp["result"][result_key]["c"][0])
-    except Exception as e:
-        print(Fore.RED + f"Exception getting price for {symbol} ({pair}): {e}")
+    resp = kraken.query_public("Ticker", {"pair": pair})
+    if resp.get("error"):
+        print(Fore.RED + f"Price error {symbol}: {resp['error']}")
         return None
-
-def format_pnl(value):
-    return Fore.GREEN + f"{value:.2f}" + Style.RESET_ALL if value >= 0 else Fore.RED + f"{value:.2f}" + Style.RESET_ALL
-
-def log_trade_csv(trade):
-    file_exists = os.path.isfile(trade_log_file)
-    with open(trade_log_file, mode='a', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=[
-            'type', 'symbol', 'entry', 'exit', 'profit', 'entry_time', 'exit_time', 'duration', 'order_type', 'strategy_type'
-        ])
-        if not file_exists:
-            writer.writeheader()
-        writer.writerow({
-            'type': trade['type'],
-            'symbol': trade['symbol'],
-            'entry': f"{trade['entry']:.4f}",
-            'exit': f"{trade.get('exit', ''):.4f}" if trade.get('exit') else "",
-            'profit': f"{trade.get('profit', ''):.4f}" if trade.get('profit') else "",
-            'entry_time': trade['entry_time'],
-            'exit_time': trade.get('exit_time', ""),
-            'duration': f"{trade.get('duration', ''):.2f}" if trade.get('duration') else "",
-            'order_type': trade.get('order_type', ""),
-            'strategy_type': trade.get('strategy_type', "")
-        })
+    result_key = list(resp["result"].keys())[0]
+    return float(resp["result"][result_key]["c"][0])
 
 # =======================
-# Portfolio & balances
+# Order functions with leverage patch
 # =======================
-def get_total_equity_usd():
-    """Sum balances (USD and other assets converted to USD using pair cache)."""
-    resp = kraken_private_request("Balance")
-    if resp.get("error"):
-        print(Fore.RED + f"Error fetching balance: {resp['error']}")
-        return 0
-    balances = resp['result']
-    total_equity = 0.0
-    for asset, amount_str in balances.items():
-        amount = float(amount_str)
-        if amount <= 0:
-            continue
-        # Kraken uses ZUSD for USD sometimes
-        if asset in ["ZUSD", "USDT", "USD"]:
-            total_equity += amount
-            continue
-        # build a symbol like "ASSETUSD"
-        normalized_asset = asset.replace("X", "").replace("Z", "")
-        symbol = (normalized_asset + "USD").upper()
-        price = get_current_price(symbol)
-        if price:
-            total_equity += amount * price
-        else:
-            # If price not found, skip but warn once
-            # (We don't spam; resolution happens via pair cache)
-            pass
-    return total_equity
-
-def get_available_margin():
-    resp = kraken_private_request("TradeBalance", {"asset": "ZUSD"})
-    if resp.get("error"):
-        return 0
-    balance = float(resp['result']['eb'])
-    margin_used = float(resp['result']['mf'])
-    return max(balance - margin_used, 0)
-
-def get_spot_balance(asset="ZUSD"):
-    resp = kraken_private_request("Balance")
-    if resp.get("error"):
-        return 0
-    return max(float(resp['result'].get(asset, 0)), 0)
-
-# =======================
-# Persistent storage for positions
-# =======================
-def save_positions():
-    with open(positions_file, "w") as f:
-        serializable_positions = {}
-        for sym, pos_list in positions.items():
-            serializable_positions[sym] = []
-            for pos in pos_list:
-                pos_copy = pos.copy()
-                # convert datetime to iso
-                pos_copy['entry_time'] = pos_copy['entry_time'].isoformat()
-                serializable_positions[sym].append(pos_copy)
-        json.dump(serializable_positions, f, indent=4)
-
-def load_positions():
-    global positions
-    if os.path.isfile(positions_file):
-        with open(positions_file, "r") as f:
-            loaded = json.load(f)
-        positions = {s: [] for s in symbols}
-        for sym, pos_list in loaded.items():
-            for pos in pos_list:
-                pos['entry_time'] = datetime.fromisoformat(pos['entry_time'])
-                positions[sym].append(pos)
-        print(Fore.YELLOW + f"♻️ Loaded {sum(len(p) for p in positions.values())} open positions from {positions_file}")
-
-# =======================
-# Order sizing & placement
-# =======================
-def calculate_order_volume(symbol, price, risk_pct):
-    """
-    Target exposure (USD) = total_portfolio_value * risk_pct
-    Volume = target_exposure_usd / price
-    """
-    # total portfolio (cash + all holdings) in USD
-    total_portfolio = get_total_equity_usd()
-    if total_portfolio <= 0:
-        print(Fore.RED + "Unable to compute portfolio value; skipping sizing.")
-        return 0, None
-
-    target_exposure = total_portfolio * risk_pct  # USD amount we want each position to represent
-    volume = target_exposure / price
-    # prefer margin if available; actual execution will attempt margin first and fallback
-    return volume, "margin"
-
 def place_market_order(symbol, side, volume, desired_order_type="margin"):
-    """Place order using resolved Kraken pair name. Attempts desired_order_type, fallback to spot on margin errors."""
     if volume <= 0:
-        print(Fore.RED + f"Invalid volume for {symbol}: {volume}")
+        print(Fore.RED + f"Invalid volume for {symbol}")
         return None
-
     pair = resolve_pair(symbol)
     if not pair:
-        print(Fore.RED + f"Cannot resolve pair for {symbol}; order aborted.")
+        print(Fore.RED + f"Cannot resolve pair for {symbol}")
         return None
 
-    data = {"pair": pair, "type": side, "ordertype": "market", "volume": f"{volume:.8f}"}
-    # Try margin first if desired
+    data = {
+        "pair": pair,
+        "type": side,
+        "ordertype": "market",
+        "volume": f"{volume:.8f}"
+    }
+
     if desired_order_type == "margin":
-        data_with_margin = data.copy()
-        data_with_margin["oflags"] = "margin"
-        resp = kraken_private_request("AddOrder", data_with_margin)
+        data_margin = data.copy()
+        data_margin["leverage"] = "2:1"
+        resp = kraken_private_request("AddOrder", data_margin)
         if resp.get("error"):
-            # If margin-specific error, try spot fallback
-            err = resp.get("error")
-            print(Fore.YELLOW + f"⚠️ Margin order error for {symbol} ({pair}): {err} — trying spot fallback.")
-            # Attempt spot
+            print(Fore.YELLOW + f"⚠️ Margin order error for {symbol}: {resp['error']} — trying spot fallback.")
             resp_spot = kraken_private_request("AddOrder", data)
             if resp_spot.get("error"):
-                print(Fore.RED + f"❌ Spot fallback also failed for {symbol}: {resp_spot['error']}")
+                print(Fore.RED + f"❌ Spot fallback also failed: {resp_spot['error']}")
                 return None
             txid = resp_spot['result']['txid'][0]
-            print(Fore.GREEN + f"✅ Spot order placed after margin fallback: {symbol} | TXID: {txid}")
-            return volume, get_current_price(symbol), "spot"
-        else:
-            txid = resp['result']['txid'][0]
-            print(Fore.GREEN + f"✅ Margin order placed: {symbol} | TXID: {txid}")
-            return volume, get_current_price(symbol), "margin"
-    else:
-        # Spot
-        resp = kraken_private_request("AddOrder", data)
-        if resp.get("error"):
-            print(Fore.RED + f"❌ Spot order error for {symbol}: {resp['error']}")
-            return None
+            price = get_current_price(symbol)
+            print(Fore.GREEN + f"✅ Spot order placed after margin fallback {symbol} | TXID {txid}")
+            return volume, price, "spot"
         txid = resp['result']['txid'][0]
-        print(Fore.GREEN + f"✅ Spot order placed: {symbol} | TXID: {txid}")
-        return volume, get_current_price(symbol), "spot"
+        price = get_current_price(symbol)
+        print(Fore.GREEN + f"✅ Margin order placed {symbol} | TXID {txid}")
+        return volume, price, "margin"
+
+    resp_spot = kraken_private_request("AddOrder", data)
+    if resp_spot.get("error"):
+        print(Fore.RED + f"❌ Spot order error {symbol}: {resp_spot['error']}")
+        return None
+    txid = resp_spot['result']['txid'][0]
+    price = get_current_price(symbol)
+    print(Fore.GREEN + f"✅ Spot order placed {symbol} | TXID {txid}")
+    return volume, price, "spot"
 
 def place_stop_loss(symbol, entry_price, side, volume, stop_loss_pct=0.4):
     stop_price = entry_price * (1 - stop_loss_pct) if side == "buy" else entry_price * (1 + stop_loss_pct)
     pair = resolve_pair(symbol)
     if not pair:
-        print(Fore.LIGHTRED_EX + f"Cannot resolve pair for stop-loss: {symbol}")
+        print(Fore.RED + f"Stop-loss failed, unknown pair {symbol}")
         return None
     data = {
         "pair": pair,
         "type": "sell" if side == "buy" else "buy",
         "ordertype": "stop-loss",
         "price": f"{stop_price:.4f}",
-        "volume": f"{volume:.8f}"
+        "volume": f"{volume:.8f}",
+        "leverage": "2:1"
     }
     resp = kraken_private_request("AddOrder", data)
     if resp.get("error"):
-        print(Fore.RED + f"Stop-loss order error for {symbol}: {resp['error']}")
-        return None
+        print(Fore.YELLOW + f"⚠️ Stop-loss leverage error for {symbol}: {resp['error']} — fallback spot")
+        data.pop("leverage", None)
+        resp = kraken_private_request("AddOrder", data)
+        if resp.get("error"):
+            print(Fore.RED + f"Stop-loss failed {symbol}: {resp['error']}")
+            return None
     txid = resp['result']['txid'][0]
-    print(Fore.RED + f"🛑 Stop-loss set at {stop_price:.4f} | TXID: {txid}")
+    print(Fore.RED + f"🛑 Stop-loss set at {stop_price:.4f} | TXID {txid}")
     return txid
 
-def cancel_stop_loss(txid):
-    if not txid: return
-    resp = kraken_private_request("CancelOrder", {"txid": txid})
-    if resp.get("error"):
-        print(Fore.RED + f"Failed to cancel stop-loss {txid}: {resp['error']}")
-    else:
-        print(Fore.YELLOW + f"🗑 Stop-loss {txid} canceled")
 
 # =======================
-# Trading logic
+# Portfolio printout
 # =======================
-def scan_for_entry(symbol, last_closed_candle):
-    if last_closed_candle['close'] < last_closed_candle['lower'] and len(positions[symbol]) == 0:
-        price = last_closed_candle['close']
-        volume, _ = calculate_order_volume(symbol, price, position_size_pct)
-        if volume <= 0:
-            print(Fore.RED + f"No calculated volume for {symbol}")
-            return
-        result = place_market_order(symbol, "buy", volume, desired_order_type="margin")
-        if result:
-            vol, entry_price, order_type = result
-            stop_txid = place_stop_loss(symbol, entry_price, "buy", vol, stop_loss_pct)
-            trade = {
-                'symbol': symbol,
-                'type': 'market_buy',
-                'entry': entry_price,
-                'entry_time': datetime.now(timezone.utc),
-                'volume': vol,
-                'order_type': order_type,
-                'stop_txid': stop_txid,
-                'take_profit_enabled': True,
-                'strategy_type': "strategy1",
-                'tp_points': [entry_price * 1.02, entry_price * 1.05]  # example TPs
-            }
-            positions[symbol].append(trade)
-            trades.setdefault(symbol, []).append(trade)
-            save_positions()
-            log_trade_csv(trade)
-            print(Fore.GREEN + f"[{symbol}] 🚀 Market BUY executed at {entry_price:.4f} ({order_type}) with stop-loss set")
-
-def close_position(symbol, position):
-    cancel_stop_loss(position.get('stop_txid'))
-    volume = position['volume']
-    entry_price = position['entry']
-    pair = resolve_pair(symbol)
-    if not pair:
-        print(Fore.RED + f"Cannot resolve pair to close position: {symbol}")
-        return
-    resp = kraken_private_request("AddOrder", {"pair": pair, "type": "sell", "ordertype": "market", "volume": f"{volume:.8f}"})
+def get_account_balance():
+    resp = kraken_private_request("Balance")
     if resp.get("error"):
-        print(Fore.RED + f"Error closing {symbol}: {resp['error']}")
+        print(Fore.RED + f"❌ Balance error: {resp['error']}")
+        return {}
+    return resp["result"]
+
+def print_portfolio_status():
+    balances = get_account_balance()
+    if not balances:
         return
-    exit_price = get_current_price(symbol)
-    profit = (exit_price - entry_price) * volume
-    duration_hours = (datetime.now(timezone.utc) - position['entry_time']).total_seconds() / 3600
-    trade = {
-        'symbol': symbol,
-        'type': 'take_profit',
-        'entry': entry_price,
-        'exit': exit_price,
-        'profit': profit,
-        'entry_time': position['entry_time'],
-        'exit_time': datetime.now(timezone.utc),
-        'duration': duration_hours,
-        'order_type': position.get('order_type', ""),
-        'strategy_type': position.get('strategy_type', "")
+    total_usd = float(balances.get("ZUSD", 0))
+    exposure = 0
+    margin_used = 0
+    leverage_ratio = 0
+
+    # Calculate exposure from open positions (simplified)
+    for sym, pos_list in positions.items():
+        for p in pos_list:
+            exposure += p.get("exposure", 0)
+            if p.get("type") == "margin":
+                margin_used += p.get("margin", 0)
+
+    if margin_used > 0:
+        leverage_ratio = round(exposure / margin_used, 2)
+
+    print(Style.BRIGHT + Fore.CYAN + "
+📊 Portfolio Status")
+    print(Fore.WHITE + f"💰 USD Balance: {total_usd:,.2f}")
+    print(Fore.YELLOW + f"📈 Exposure: {exposure:,.2f} USD")
+    print(Fore.MAGENTA + f"🪙 Margin Used: {margin_used:,.2f} USD")
+    print(Fore.GREEN + f"⚔️ Leverage Ratio: {leverage_ratio if leverage_ratio else 1}x")
+
+    # Per-symbol breakdown
+    for sym, pos_list in positions.items():
+        for p in pos_list:
+            print(Fore.WHITE + f"  {sym} | {p.get('side')} | Exposure: {p.get('exposure',0):.2f} | Margin: {p.get('margin',0):.2f} | Lvg: {p.get('leverage',1)}x")
+
+# Example of storing position data when creating orders
+def open_position(symbol, side, volume, leverage_type):
+    price = get_current_price(symbol)
+    if not price:
+        return
+    exposure = volume * price
+    margin = exposure / 2 if leverage_type == "margin" else exposure
+    pos = {
+        "side": side,
+        "volume": volume,
+        "entry_price": price,
+        "exposure": exposure,
+        "margin": margin,
+        "leverage": 2 if leverage_type == "margin" else 1,
+        "type": leverage_type,
+        "timestamp": time.time()
     }
-    trades.setdefault(symbol, []).append(trade)
-    positions[symbol].remove(position)
-    save_positions()
-    log_trade_csv(trade)
-    print(Fore.YELLOW + f"[{symbol}] ✅ Trade closed at {exit_price:.4f} | PnL: {profit:.2f}")
+    positions[symbol].append(pos)
+    print(Fore.CYAN + f"📌 Position opened: {symbol} {side} {volume} @ {price:.2f} | Exposure: {exposure:.2f} | Margin: {margin:.2f} | Lvg: {pos['leverage']}x")
 
-# =======================
-# Load existing positions on startup (optionally augment with OpenPositions)
-# =======================
-def load_open_positions_from_kraken():
-    """Load open positions directly from Kraken (gives opentm and margin info)."""
-    resp = kraken_private_request("OpenPositions", {"docalcs": True})
-    if resp.get("error"):
-        print(Fore.RED + f"Error fetching open positions: {resp['error']}")
-        return
-    for txid, pos in resp['result'].items():
-        pair = pos.get('pair')
-        # normalize to friendly symbol if possible (use mapping inverse)
-        # We'll keep pair as is and try to map it to our symbols list if possible
-        # Compute entry price and volume
-        try:
-            entry_price = float(pos['cost']) / float(pos['vol'])
-        except Exception:
-            entry_price = float(pos.get('price', 0))
-        volume = float(pos['vol'])
-        order_type = "margin" if pos.get('margin') == "1" else "spot"
-        entry_time = datetime.fromtimestamp(int(float(pos.get('opentm', time.time()))), timezone.utc)
-        # Map pair back to symbol key such as "CELOUSD" if possible
-        friendly = None
-        # search cache for mapping pair->friendly
-        for k, v in PAIR_CACHE.items():
-            if v == pair:
-                friendly = k
-                break
-        if not friendly:
-            # fallback to pair name itself
-            friendly = pair
-        trade = {
-            'symbol': friendly,
-            'type': 'market_buy',
-            'entry': entry_price,
-            'entry_time': entry_time,
-            'volume': volume,
-            'order_type': order_type,
-            'stop_txid': None,
-            'take_profit_enabled': True,
-            'strategy_type': "unknown",
-            'tp_points': []
-        }
-        positions.setdefault(friendly, []).append(trade)
-        trades.setdefault(friendly, []).append(trade)
-        print(Fore.LIGHTBLUE_EX + f"♻️ Loaded open position: {friendly} | Entry: {entry_price:.4f} | Vol: {volume:.4f} | Type: {order_type} | Opened: {entry_time}")
-
-# =======================
-# Boot: load caches & persisted positions
-# =======================
-# ensure pair cache exists (already built above if empty)
-if not PAIR_CACHE:
-    PAIR_CACHE = build_pair_cache()
-
-# Load persisted positions (this will prefer persisted positions.json)
-if os.path.isfile(positions_file):
-    load_positions()
-else:
-    # If no positions.json, attempt to import open positions from Kraken
-    load_open_positions_from_kraken()
-    save_positions()
-
-# =======================
-# Main loop
-# =======================
-last_portfolio_update = 0
-portfolio_update_interval = 300
-initial_scan_done = False
-
-try:
-    while True:
-        now = time.time()
-        for symbol in symbols:
-            try:
-                df = fetch_ohlc(symbol)
-                if df is None or len(df) < bollinger_length:
-                    continue
-                df = calculate_bollinger(df)
-                last_closed = df.iloc[-2]
-                if last_scanned[symbol] == last_closed['time']:
-                    continue
-                last_scanned[symbol] = last_closed['time']
-
-                print(Fore.CYAN + f"[{symbol}] Scanning {last_closed['time']} | Close={last_closed['close']:.4f}, Lower={last_closed['lower']:.4f}")
-
-                # Entry & exit
-                scan_for_entry(symbol, last_closed)
-                for pos in positions.get(symbol, [])[:]:
-                    if last_closed['close'] > last_closed['mean'] and pos.get('take_profit_enabled'):
-                        close_position(symbol, pos)
-
-            except Exception as e:
-                print(Fore.RED + f"[{symbol}] Skipping symbol due to error: {e}")
-
-        # --- Portfolio update ---
-        if now - last_portfolio_update >= portfolio_update_interval or not initial_scan_done:
-            last_portfolio_update = now
-            initial_scan_done = True
-
-            total_equity = get_total_equity_usd()
-            print(Style.BRIGHT + Fore.MAGENTA + f"\n📊 Portfolio Update @ {datetime.now(timezone.utc)} | Cash/Total Equity: ${total_equity:.2f}")
-
-            for sym, pos_list in positions.items():
-                for pos in pos_list:
-                    current_price = get_current_price(sym)
-                    if current_price is None:
-                        continue
-                    pos_value = current_price * pos['volume']
-                    unrealized = (current_price - pos['entry']) * pos['volume']
-                    duration_hours = (datetime.now(timezone.utc) - pos['entry_time']).total_seconds() / 3600
-                    print(Fore.LIGHTWHITE_EX + f"[{sym}] Entry: {pos['entry']:.4f} | Qty: {pos['volume']:.4f} | Current: {current_price:.4f} | $ Value: {pos_value:.2f} | PnL: {format_pnl(unrealized)} | Duration: {duration_hours:.2f}h | Type: {pos['order_type']} | Strategy: {pos.get('strategy_type','')}")
-            # Time until next 4h candle
-            now_utc = datetime.now(timezone.utc)
-            hours = now_utc.hour % 4
-            minutes = now_utc.minute
-            seconds = now_utc.second
-            seconds_until_next_candle = ((3 - hours) * 3600) + ((59 - minutes) * 60) + (60 - seconds)
-            print(Fore.LIGHTBLUE_EX + f"⏱ Time until next entry scan: {seconds_until_next_candle//3600}h {(seconds_until_next_candle%3600)//60}m {seconds_until_next_candle%60}s")
-            print(Fore.MAGENTA + "-"*60)
-
-        time.sleep(10)
-
-except KeyboardInterrupt:
-    print(Fore.RED + "🛑 Bot stopped manually.")
