@@ -296,56 +296,47 @@ def get_account_balance():
         return {}
     return resp["result"]
     
+# =======================
+# Portfolio & exposure
+# =======================
 def get_total_equity_usd():
+    """Return total account equity in USD (cash + value of all positions)"""
     balances = get_account_balance()
     if not balances:
         return 0
     usd_balance = float(balances.get("ZUSD", 0))  # cash in USD
+    # Calculate exposure: current market value of all positions
     exposure = sum(p['volume'] * get_current_price(sym) for sym in positions for p in positions[sym])
     return usd_balance + exposure
 
-def calculate_trade_volume(symbol, leverage=2):
-    """
-    Calculates trade volume in asset units, accounting for leverage.
-    Ensures each position targets the same % of total equity.
-    """
-    # Step 1: total equity (cash + current positions)
-    balances = get_account_balance()
-    if not balances:
+def calculate_trade_volume(symbol):
+    """Calculate how many units of symbol to buy for target exposure with leverage"""
+    equity = get_total_equity_usd()
+    if equity <= 0:
+        print(Fore.RED + "❌ Cannot calculate trade size: equity is zero")
         return 0
-    cash_usd = float(balances.get("ZUSD", 0))
-
-    # Current portfolio exposure
-    portfolio_value_usd = sum(
-        p['volume'] * get_current_price(sym)
-        for sym in positions for p in positions[sym]
-    )
-
-    total_equity = cash_usd + portfolio_value_usd
-    if total_equity <= 0:
-        print(Fore.RED + "❌ Equity is zero, cannot calculate trade size")
+    price = get_current_price(symbol)
+    if not price:
         return 0
 
-    # Step 2: desired exposure for new position
-    desired_exposure_usd = total_equity * position_size_pct
+    # --- USD exposure we want per position ---
+    target_exposure = equity * position_size_pct
 
-    # Step 3: margin required given leverage
-    margin_required_usd = desired_exposure_usd / leverage
+    # --- margin required with 2:1 leverage ---
+    margin_required = target_exposure / 2
 
-    # Step 4: volume in asset
-    current_price = get_current_price(symbol)
-    if not current_price:
-        return 0
-    volume_asset = desired_exposure_usd / current_price
+    # --- asset volume to buy to achieve target exposure ---
+    volume_asset = target_exposure / price
 
-    # Step 5: print debug info
-    print(Fore.LIGHTBLUE_EX + f"[{symbol}] Total equity: ${total_equity:.2f} | "
-                              f"Target exposure: ${desired_exposure_usd:.2f} "
-                              f"(~{volume_asset:.6f} {symbol}), "
-                              f"margin required: ${margin_required_usd:.2f} @ {leverage}x leverage")
+    # --- print intended allocation ---
+    print(Fore.LIGHTBLUE_EX + f"[{symbol}] Total equity: ${equity:.2f} | "
+                               f"Target exposure: ${target_exposure:.2f} (~{volume_asset:.6f} {symbol}), "
+                               f"margin required: ${margin_required:.2f} @ 2x leverage")
 
     return volume_asset
+
 def format_pnl(value):
+    """Format PnL with + / - sign and 2 decimals"""
     return f"{value:+,.2f}"
 
 # =======================
