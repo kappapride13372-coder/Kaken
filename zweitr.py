@@ -547,7 +547,7 @@ if __name__ == "__main__":
                     # --- Skip if already long on Kraken (margin or spot) ---
                     already_long = is_already_long_on_kraken(symbol, open_positions)
                     # Also check spot balances
-                    spot_amount = float(balances.get(symbol.replace("USD",""), 0))
+                    spot_amount = float(balances.get(symbol.replace("USD", ""), 0))
                     if already_long or spot_amount > 0:
                         print(Fore.YELLOW + f"⚠️ Already long {symbol} on Kraken — skipping entry")
                         continue
@@ -568,11 +568,37 @@ if __name__ == "__main__":
                 last_portfolio_update = now
                 initial_scan_done = True
 
-                total_equity = get_total_equity_usd()
-                print(Style.BRIGHT + Fore.MAGENTA + f"\n📊 Portfolio Update @ {datetime.now(timezone.utc)} | Total Equity: ${total_equity:.2f}")
+                # Fetch balances once
+                balances = get_account_balance()
+                cash_usd = float(balances.get("ZUSD", 0))
+
+                total_exposure = 0
+                total_margin = 0
+                total_unrealized = 0
 
                 for sym in symbols:
-                    for pos in positions[sym]:
+                    pos_list = positions.get(sym, [])
+                    if not pos_list:
+                        continue
+
+                    # Deduplicate and clean positions
+                    seen_positions = set()
+                    clean_list = []
+                    for pos in pos_list:
+                        side = pos.get("side")
+                        entry_price = pos.get("entry_price", 0)
+                        volume = pos.get("volume", 0)
+                        if not side or volume <= 0 or entry_price <= 0:
+                            continue
+                        pos_id = (side, entry_price, volume)
+                        if pos_id in seen_positions:
+                            continue
+                        seen_positions.add(pos_id)
+                        clean_list.append(pos)
+                    positions[sym] = clean_list
+
+                    # Print each position
+                    for pos in clean_list:
                         current_price = get_current_price(sym)
                         if current_price is None:
                             continue
@@ -580,10 +606,14 @@ if __name__ == "__main__":
                         pos_value = pos['volume'] * current_price
                         margin = pos['exposure'] / pos['leverage']
 
-                        if pos['side'] == "buy":
+                        if pos['side'].lower() == "buy":
                             unrealized = (current_price - pos['entry_price']) * pos['volume']
                         else:
                             unrealized = (pos['entry_price'] - current_price) * pos['volume']
+
+                        total_exposure += pos['exposure']
+                        total_margin += margin
+                        total_unrealized += unrealized
 
                         print(Fore.LIGHTWHITE_EX + f"[{sym}] Side: {pos['side'].upper()} | "
                                                     f"Entry: {pos['entry_price']:.4f} | Qty: {pos['volume']:.6f} | "
@@ -591,14 +621,12 @@ if __name__ == "__main__":
                                                     f"Margin: ${margin:.2f} | Lvg: {pos['leverage']}x | "
                                                     f"PnL: {format_pnl(unrealized)}")
 
-                # Total portfolio summary
-                cash_usd = float(balances.get("ZUSD", 0))
-                total_margin = sum(p['exposure'] / p['leverage'] for sym in positions for p in positions[sym])
-                total_exposure = sum(p['exposure'] for sym in positions for p in positions[sym])
-
+                # Print summary
+                total_equity = get_total_equity_usd()
                 print(Fore.LIGHTBLUE_EX + f"\n💰 Cash: ${cash_usd:.2f} | "
                                            f"Total Margin: ${total_margin:.2f} | "
                                            f"Total Exposure: ${total_exposure:.2f} | "
+                                           f"Total Unrealized PnL: {format_pnl(total_unrealized)} | "
                                            f"Total Equity: ${total_equity:.2f}\n")
 
                 # Time until next 4h candle
