@@ -303,32 +303,43 @@ def get_account_balance():
 # Portfolio & exposure
 # =======================
 def get_total_equity_usd():
-    """Return total account equity in USD (cash + value of all positions)"""
+    """Return total account equity in USD using cash + live Kraken positions."""
     balances = get_account_balance()
     if not balances:
         return 0
     usd_balance = float(balances.get("ZUSD", 0))  # cash in USD
-    # Current value of all positions
-    exposure = sum(p['volume'] * get_current_price(sym) for sym in positions for p in positions[sym])
-    return usd_balance + exposure
 
-def calculate_trade_volume(symbol, leverage=2):
-    """Calculate number of asset units to buy for target exposure with given leverage"""
+    # Get live open positions from Kraken
+    resp = kraken_private_request("OpenPositions")
+    if resp.get("error"):
+        print(Fore.RED + f"❌ OpenPositions error: {resp['error']}")
+        open_positions_value = 0
+    else:
+        open_positions_value = 0
+        for pos_id, pos in resp["result"].items():
+            symbol = pos["pair"].replace("ZUSD","USD")  # crude mapping to your symbols
+            volume = float(pos["vol"])
+            current_price = get_current_price(symbol)
+            if current_price is not None:
+                open_positions_value += volume * current_price
+
+    total_equity = usd_balance + open_positions_value
+    return total_equity
+
+def calculate_trade_volume(symbol):
+    """Calculate asset units to buy for target exposure with 2x leverage based on live equity."""
     equity = get_total_equity_usd()
     if equity <= 0:
         print(Fore.RED + "❌ Cannot calculate trade size: equity is zero")
         return 0
+
     price = get_current_price(symbol)
     if not price:
         return 0
 
-    # Desired USD exposure for this position
     target_exposure = equity * position_size_pct
-
-    # Margin required considering leverage
+    leverage = 2
     margin_required = target_exposure / leverage
-
-    # Asset units to buy to reach target exposure
     volume_asset = target_exposure / price
 
     print(Fore.LIGHTBLUE_EX + f"[{symbol}] Total equity: ${equity:.2f} | "
