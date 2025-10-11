@@ -288,4 +288,75 @@ def open_position(symbol, side, volume, leverage_type):
     }
     positions[symbol].append(pos)
     print(Fore.CYAN + f"📌 Position opened: {symbol} {side} {volume} @ {price:.2f} | Exposure: {exposure:.2f} | Margin: {margin:.2f} | Lvg: {pos['leverage']}x")
+# =======================
+# Main runtime loop
+# =======================
+if __name__ == "__main__":
+    print(Fore.CYAN + "🚀 Kraken Bot started")
+    print(Fore.YELLOW + "✅ Pair cache loaded and ready")
+    print(Fore.WHITE + "Press CTRL+C to stop.\n")
+
+    last_portfolio_update = 0
+    portfolio_update_interval = 300  # 5 minutes
+    initial_scan_done = False
+
+    try:
+        while True:
+            now = time.time()
+
+            # --- Scan for new signals only on new 4h candle ---
+            for symbol in symbols:
+                try:
+                    df = fetch_ohlc(symbol)
+                    if df is None or len(df) < bollinger_length:
+                        continue
+                    df = calculate_bollinger(df)
+                    last_closed = df.iloc[-2]
+
+                    if last_scanned[symbol] == last_closed['time']:
+                        continue
+                    last_scanned[symbol] = last_closed['time']
+
+                    # Print scan info
+                    print(Fore.CYAN + f"[{symbol}] Scanning {last_closed['time']} | Close={last_closed['close']:.4f}, Lower={last_closed['lower']:.4f}")
+
+                    # Entry & exit checks
+                    scan_for_entry(symbol, last_closed)
+                    for pos in positions[symbol][:]:
+                        if last_closed['close'] > last_closed['mean']:
+                            close_position(symbol, pos)
+
+                except Exception as e:
+                    print(Fore.RED + f"[{symbol}] Skipping symbol due to error: {e}")
+
+            # --- Portfolio update every 5 minutes ---
+            if now - last_portfolio_update >= portfolio_update_interval or not initial_scan_done:
+                last_portfolio_update = now
+                initial_scan_done = True
+
+                total_equity = get_total_equity_usd()
+                print(Style.BRIGHT + Fore.MAGENTA + f"\n📊 Portfolio Update @ {datetime.now(timezone.utc)} | Total Equity: ${total_equity:.2f}")
+
+                for sym in symbols:
+                    for pos in positions[sym]:
+                        current_price = get_current_price(sym)
+                        if current_price is None:
+                            continue
+                        pos_value = current_price * pos['volume']
+                        unrealized = (current_price - pos['entry_price']) * pos['volume'] if pos['side'] == "buy" else (pos['entry_price'] - current_price) * pos['volume']
+                        print(Fore.LIGHTWHITE_EX + f"[{sym}] Entry: {pos['entry_price']:.4f} | Qty: {pos['volume']:.4f} | Current: {current_price:.4f} | $ Value: {pos_value:.2f} | PnL: {format_pnl(unrealized)}")
+
+                # Time until next 4h candle close
+                now_utc = datetime.now(timezone.utc)
+                hours = now_utc.hour % 4
+                minutes = now_utc.minute
+                seconds = now_utc.second
+                seconds_until_next_candle = ((3 - hours) * 3600) + ((59 - minutes) * 60) + (60 - seconds)
+                print(Fore.LIGHTBLUE_EX + f"⏱ Time until next entry scan: {seconds_until_next_candle//3600}h {(seconds_until_next_candle%3600)//60}m {seconds_until_next_candle%60}s")
+                print(Fore.MAGENTA + "-"*60)
+
+            time.sleep(10)
+
+    except KeyboardInterrupt:
+        print(Fore.RED + "🛑 Bot stopped manually.")
 
