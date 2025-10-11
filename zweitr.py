@@ -526,22 +526,31 @@ if __name__ == "__main__":
             # --- Fetch open margin positions ---
             open_positions = get_all_open_positions()
 
-            # --- Fetch spot balances ---
+            # --- Fetch spot balances for assets in our symbols ---
             balances = get_account_balance()
 
-            # Add spot positions to positions dictionary
+            # --- Add spot positions safely ---
             for symbol in symbols:
                 base = symbol.replace("USD", "")
                 qty = float(balances.get(base, 0))
                 if qty > 0:
-                    positions.setdefault(symbol, []).append({
-                        "side": "BUY",
-                        "entry_price": get_current_price(symbol),
-                        "volume": qty,
-                        "exposure": qty * get_current_price(symbol),
-                        "leverage": 1,
-                        "spot": True
-                    })
+                    current_price = get_current_price(symbol)
+                    if current_price is None:
+                        print(Fore.YELLOW + f"⚠️ Skipping spot position for {symbol} — price not available yet")
+                        continue
+
+                    # Avoid duplicates
+                    pos_list = positions.setdefault(symbol, [])
+                    pos_id = ("BUY", current_price, qty, True)
+                    if not any((p.get("side"), p.get("entry_price"), p.get("volume"), p.get("spot", False)) == pos_id for p in pos_list):
+                        pos_list.append({
+                            "side": "BUY",
+                            "entry_price": current_price,
+                            "volume": qty,
+                            "exposure": qty * current_price,
+                            "leverage": 1,
+                            "spot": True
+                        })
 
             for symbol in symbols:
                 try:
@@ -560,7 +569,7 @@ if __name__ == "__main__":
 
                     # --- Skip if already long on Kraken (margin or spot) ---
                     already_long = is_already_long_on_kraken(symbol, open_positions)
-                    spot_amount = float(balances.get(symbol.replace("USD",""), 0))
+                    spot_amount = float(balances.get(symbol.replace("USD", ""), 0))
                     if already_long or spot_amount > 0:
                         print(Fore.YELLOW + f"⚠️ Already long {symbol} on Kraken — skipping entry")
                         continue
@@ -568,9 +577,9 @@ if __name__ == "__main__":
                     # --- Scan for new entry ---
                     scan_for_entry(symbol, last_closed)
 
-                    # Close margin positions if price above mean
-                    for pos in positions.get(symbol, [])[:]:
-                        if not pos.get("spot", False) and last_closed['close'] > last_closed['mean']:
+                    # Close positions if price above mean
+                    for pos in positions[symbol][:]:
+                        if last_closed['close'] > last_closed['mean']:
                             close_position(symbol, pos)
 
                 except Exception as e:
@@ -585,26 +594,28 @@ if __name__ == "__main__":
                 print(Style.BRIGHT + Fore.MAGENTA + f"\n📊 Portfolio Update @ {datetime.now(timezone.utc)} | Total Equity: ${total_equity:.2f}")
 
                 # --- Clean and print portfolio ---
+                balances = get_account_balance()
+                cash_usd = float(balances.get("ZUSD", 0))
                 total_exposure = 0
                 total_margin = 0
                 total_unrealized = 0
-                cash_usd = float(balances.get("ZUSD", 0))
 
                 for sym in symbols:
                     pos_list = positions.get(sym, [])
                     if not pos_list:
                         continue
 
-                    # Deduplicate and clean positions
+                    # Deduplicate positions
                     seen_positions = set()
                     clean_list = []
                     for pos in pos_list:
                         side = pos.get("side")
                         entry_price = pos.get("entry_price", 0)
                         volume = pos.get("volume", 0)
+                        spot = pos.get("spot", False)
                         if not side or volume <= 0 or entry_price <= 0:
                             continue
-                        pos_id = (side, entry_price, volume, pos.get("spot", False))
+                        pos_id = (side, entry_price, volume, spot)
                         if pos_id in seen_positions:
                             continue
                         seen_positions.add(pos_id)
@@ -618,7 +629,7 @@ if __name__ == "__main__":
                             continue
 
                         pos_value = pos['volume'] * current_price
-                        margin = pos['exposure'] / pos['leverage'] if not pos.get("spot", False) else pos['exposure']
+                        margin = pos['exposure'] / pos.get('leverage', 1)
 
                         if pos['side'].lower() == "buy":
                             unrealized = (current_price - pos['entry_price']) * pos['volume']
@@ -629,8 +640,7 @@ if __name__ == "__main__":
                         total_margin += margin
                         total_unrealized += unrealized
 
-                        spot_tag = " (Spot)" if pos.get("spot", False) else ""
-                        print(Fore.LIGHTWHITE_EX + f"[{sym}]{spot_tag} Side: {pos['side'].upper()} | "
+                        print(Fore.LIGHTWHITE_EX + f"[{sym}] Side: {pos['side'].upper()} | "
                                                     f"Entry: {pos['entry_price']:.4f} | Qty: {pos['volume']:.6f} | "
                                                     f"Current: {current_price:.4f} | Exposure: ${pos_value:.2f} | "
                                                     f"Margin: ${margin:.2f} | Lvg: {pos['leverage']}x | "
