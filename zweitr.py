@@ -388,8 +388,30 @@ if __name__ == "__main__":
         while True:
             now = time.time()
 
-            # --- Fetch all open positions from Kraken once per loop ---
+            # --- Fetch all open positions from Kraken ---
             open_positions = get_all_open_positions()
+
+            # --- Sync local positions with Kraken positions ---
+            for symbol in symbols:
+                positions[symbol] = []  # reset local positions
+
+            for txid, pos in open_positions.items():
+                kraken_pair = pos.get("pair") or ""
+                side = pos.get("type") or "buy"
+                volume = float(pos.get("vol", 0))
+                cost = float(pos.get("cost", 0))
+                price = cost / volume if volume > 0 else 0
+                leverage_type = "margin" if float(pos.get("margin", 0)) > 0 else "spot"
+
+                for s in symbols:
+                    if resolve_pair(s) == kraken_pair:
+                        positions[s].append({
+                            "side": side,
+                            "volume": volume,
+                            "entry_price": price,
+                            "leverage": 2 if leverage_type=="margin" else 1,
+                            "type": leverage_type
+                        })
 
             # --- Scan symbols for entries/exits ---
             for symbol in symbols:
@@ -423,56 +445,60 @@ if __name__ == "__main__":
                 except Exception as e:
                     print(Fore.RED + f"[{symbol}] Skipping symbol due to error: {e}")
 
-                # --- Portfolio update ---
-                if now - last_portfolio_update >= portfolio_update_interval or not initial_scan_done:
-                    last_portfolio_update = now
-                    initial_scan_done = True
+            # --- Portfolio update ---
+            if now - last_portfolio_update >= portfolio_update_interval or not initial_scan_done:
+                last_portfolio_update = now
+                initial_scan_done = True
 
-                    total_equity = get_total_equity_usd()
-                    print(Style.BRIGHT + Fore.MAGENTA + f"\n📊 Portfolio Update @ {datetime.now(timezone.utc)} | Total Equity: ${total_equity:.2f}")
+                total_equity = get_total_equity_usd()
+                print(Style.BRIGHT + Fore.MAGENTA +
+                      f"\n📊 Portfolio Update @ {datetime.now(timezone.utc)} | Total Equity: ${total_equity:.2f}")
 
-                    # Print each position
-                    for sym in symbols:
-                        for pos in positions[sym]:
-                            current_price = get_current_price(sym)
-                            if current_price is None:
-                                continue
+                # Print each position
+                for sym in symbols:
+                    for pos in positions[sym]:
+                        current_price = get_current_price(sym)
+                        if current_price is None:
+                            continue
 
-                            pos_value = pos['volume'] * current_price
-                            margin = pos['exposure'] / pos['leverage']
+                        pos_value = pos['volume'] * current_price
+                        margin = pos['exposure'] / pos['leverage'] if 'exposure' in pos else pos_value / pos['leverage']
 
-                            if pos['side'] == "buy":
-                                unrealized = (current_price - pos['entry_price']) * pos['volume']
-                            else:
-                                unrealized = (pos['entry_price'] - current_price) * pos['volume']
+                        unrealized = (current_price - pos['entry_price']) * pos['volume'] \
+                            if pos['side'] == "buy" else (pos['entry_price'] - current_price) * pos['volume']
 
-                            print(Fore.LIGHTWHITE_EX + f"[{sym}] Side: {pos['side'].upper()} | "
-                                                        f"Entry: {pos['entry_price']:.4f} | Qty: {pos['volume']:.6f} | "
-                                                        f"Current: {current_price:.4f} | Exposure: ${pos_value:.2f} | "
-                                                        f"Margin: ${margin:.2f} | Lvg: {pos['leverage']}x | "
-                                                        f"PnL: {format_pnl(unrealized)}")
+                        print(Fore.LIGHTWHITE_EX + f"[{sym}] Side: {pos['side'].upper()} | "
+                                                    f"Entry: {pos['entry_price']:.4f} | Qty: {pos['volume']:.6f} | "
+                                                    f"Current: {current_price:.4f} | Exposure: ${pos_value:.2f} | "
+                                                    f"Margin: ${margin:.2f} | Lvg: {pos['leverage']}x | "
+                                                    f"PnL: {format_pnl(unrealized)}")
 
-                    # Total portfolio summary
-                    cash_usd = float(get_account_balance().get("ZUSD", 0))
-                    total_margin = sum(p['exposure'] / p['leverage'] for sym in positions for p in positions[sym])
-                    total_exposure = sum(p['exposure'] for sym in positions for p in positions[sym])
+                # Total portfolio summary
+                cash_usd = float(get_account_balance().get("ZUSD", 0))
+                total_margin = sum(p['exposure'] / p['leverage'] if 'exposure' in p else p['volume']*get_current_price(sym)/p['leverage'] 
+                                   for sym in positions for p in positions[sym])
+                total_exposure = sum(p['exposure'] if 'exposure' in p else p['volume']*get_current_price(sym)
+                                     for sym in positions for p in positions[sym])
 
-                    print(Fore.LIGHTBLUE_EX + f"\n💰 Cash: ${cash_usd:.2f} | "
-                                               f"Total Margin: ${total_margin:.2f} | "
-                                               f"Total Exposure: ${total_exposure:.2f} | "
-                                               f"Total Equity: ${total_equity:.2f}\n")
+                print(Fore.LIGHTBLUE_EX + f"\n💰 Cash: ${cash_usd:.2f} | "
+                                           f"Total Margin: ${total_margin:.2f} | "
+                                           f"Total Exposure: ${total_exposure:.2f} | "
+                                           f"Total Equity: ${total_equity:.2f}\n")
 
-                    # Time until next 4h candle
-                    now_utc = datetime.now(timezone.utc)
-                    hours = now_utc.hour % 4
-                    minutes = now_utc.minute
-                    seconds = now_utc.second
-                    seconds_until_next_candle = ((3 - hours) * 3600) + ((59 - minutes) * 60) + (60 - seconds)
-                    print(Fore.LIGHTBLUE_EX + f"⏱ Time until next entry scan: {seconds_until_next_candle//3600}h "
-                                               f"{(seconds_until_next_candle%3600)//60}m {seconds_until_next_candle%60}s")
-                    print(Fore.MAGENTA + "-"*60)
+                # Time until next 4h candle
+                now_utc = datetime.now(timezone.utc)
+                hours = now_utc.hour % 4
+                minutes = now_utc.minute
+                seconds = now_utc.second
+                seconds_until_next_candle = ((3 - hours) * 3600) + ((59 - minutes) * 60) + (60 - seconds)
+                print(Fore.LIGHTBLUE_EX + f"⏱ Time until next entry scan: {seconds_until_next_candle//3600}h "
+                                           f"{(seconds_until_next_candle%3600)//60}m {seconds_until_next_candle%60}s")
+                print(Fore.MAGENTA + "-"*60)
 
             time.sleep(10)
+
+    except KeyboardInterrupt:
+        print(Fore.RED + "🛑 Bot stopped manually.")
 
     except KeyboardInterrupt:
         print(Fore.RED + "🛑 Bot stopped manually.")
