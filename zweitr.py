@@ -188,7 +188,7 @@ def scan_for_entry(symbol, last_closed):
     lower = last_closed['lower']
 
     if close < lower:
-        # Calculate trade size in asset units
+        # Calculate trade size with leverage = 2x
         volume = calculate_trade_volume(symbol, leverage=2)
         if volume <= 0:
             print(Fore.YELLOW + f"Skipping {symbol} due to zero volume")
@@ -312,8 +312,8 @@ def get_total_equity_usd():
     exposure = sum(p['volume'] * get_current_price(sym) for sym in positions for p in positions[sym])
     return usd_balance + exposure
 
-def calculate_trade_volume(symbol):
-    """Calculate number of units to buy for target exposure with 2x leverage"""
+def calculate_trade_volume(symbol, leverage=2):
+    """Calculate number of asset units to buy for target exposure with given leverage"""
     equity = get_total_equity_usd()
     if equity <= 0:
         print(Fore.RED + "❌ Cannot calculate trade size: equity is zero")
@@ -322,21 +322,18 @@ def calculate_trade_volume(symbol):
     if not price:
         return 0
 
-    # --- desired USD exposure for this position ---
+    # Desired USD exposure for this position
     target_exposure = equity * position_size_pct
 
-    # --- margin required considering 2x leverage ---
-    leverage = 2
+    # Margin required considering leverage
     margin_required = target_exposure / leverage
 
-    # --- asset units to buy to reach target exposure ---
+    # Asset units to buy to reach target exposure
     volume_asset = target_exposure / price
 
-    # --- print allocation and margin ---
     print(Fore.LIGHTBLUE_EX + f"[{symbol}] Total equity: ${equity:.2f} | "
                                f"Target exposure: ${target_exposure:.2f} (~{volume_asset:.6f} {symbol}), "
                                f"margin required: ${margin_required:.2f} @ {leverage}x leverage")
-
     return volume_asset
 
 def format_pnl(value):
