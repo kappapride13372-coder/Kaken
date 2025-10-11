@@ -390,6 +390,9 @@ def is_already_long_on_kraken(symbol, open_positions):
 
     return False
 
+# =======================
+# Main loop
+# =======================
 if __name__ == "__main__":
     print(Fore.CYAN + "🚀 Kraken Bot started")
     print(Fore.YELLOW + "✅ Pair cache loaded and ready")
@@ -403,30 +406,8 @@ if __name__ == "__main__":
         while True:
             now = time.time()
 
-            # --- Fetch all open positions from Kraken ---
+            # --- Fetch all open positions from Kraken once per loop ---
             open_positions = get_all_open_positions()
-
-            # --- Sync local positions with Kraken positions ---
-            for symbol in symbols:
-                positions[symbol] = []  # reset local positions
-
-            for txid, pos in open_positions.items():
-                kraken_pair = pos.get("pair") or ""
-                side = pos.get("type") or "buy"
-                volume = float(pos.get("vol", 0))
-                cost = float(pos.get("cost", 0))
-                price = cost / volume if volume > 0 else 0
-                leverage_type = "margin" if float(pos.get("margin", 0)) > 0 else "spot"
-
-                for s in symbols:
-                    if resolve_pair(s) == kraken_pair:
-                        positions[s].append({
-                            "side": side,
-                            "volume": volume,
-                            "entry_price": price,
-                            "leverage": 2 if leverage_type=="margin" else 1,
-                            "type": leverage_type
-                        })
 
             # --- Scan symbols for entries/exits ---
             for symbol in symbols:
@@ -444,7 +425,7 @@ if __name__ == "__main__":
                     print(Fore.CYAN + f"[{symbol}] Scanning {last_closed['time']} | "
                                        f"Close={last_closed['close']:.4f}, Lower={last_closed['lower']:.4f}")
 
-                    # --- Skip if already long on Kraken ---
+                    # --- Skip if already long on Kraken (spot or margin) ---
                     if is_already_long_on_kraken(symbol, open_positions):
                         print(Fore.YELLOW + f"⚠️ Already long {symbol} on Kraken — skipping entry")
                         continue
@@ -466,8 +447,7 @@ if __name__ == "__main__":
                 initial_scan_done = True
 
                 total_equity = get_total_equity_usd()
-                print(Style.BRIGHT + Fore.MAGENTA +
-                      f"\n📊 Portfolio Update @ {datetime.now(timezone.utc)} | Total Equity: ${total_equity:.2f}")
+                print(Style.BRIGHT + Fore.MAGENTA + f"\n📊 Portfolio Update @ {datetime.now(timezone.utc)} | Total Equity: ${total_equity:.2f}")
 
                 # Print each position
                 for sym in symbols:
@@ -477,10 +457,12 @@ if __name__ == "__main__":
                             continue
 
                         pos_value = pos['volume'] * current_price
-                        margin = pos['exposure'] / pos['leverage'] if 'exposure' in pos else pos_value / pos['leverage']
+                        margin = pos['exposure'] / pos['leverage']
 
-                        unrealized = (current_price - pos['entry_price']) * pos['volume'] \
-                            if pos['side'] == "buy" else (pos['entry_price'] - current_price) * pos['volume']
+                        if pos['side'] == "buy":
+                            unrealized = (current_price - pos['entry_price']) * pos['volume']
+                        else:
+                            unrealized = (pos['entry_price'] - current_price) * pos['volume']
 
                         print(Fore.LIGHTWHITE_EX + f"[{sym}] Side: {pos['side'].upper()} | "
                                                     f"Entry: {pos['entry_price']:.4f} | Qty: {pos['volume']:.6f} | "
@@ -490,10 +472,8 @@ if __name__ == "__main__":
 
                 # Total portfolio summary
                 cash_usd = float(get_account_balance().get("ZUSD", 0))
-                total_margin = sum(p['exposure'] / p['leverage'] if 'exposure' in p else p['volume']*get_current_price(sym)/p['leverage'] 
-                                   for sym in positions for p in positions[sym])
-                total_exposure = sum(p['exposure'] if 'exposure' in p else p['volume']*get_current_price(sym)
-                                     for sym in positions for p in positions[sym])
+                total_margin = sum(p['exposure'] / p['leverage'] for sym in positions for p in positions[sym])
+                total_exposure = sum(p['exposure'] for sym in positions for p in positions[sym])
 
                 print(Fore.LIGHTBLUE_EX + f"\n💰 Cash: ${cash_usd:.2f} | "
                                            f"Total Margin: ${total_margin:.2f} | "
@@ -511,9 +491,6 @@ if __name__ == "__main__":
                 print(Fore.MAGENTA + "-"*60)
 
             time.sleep(10)
-
-    except KeyboardInterrupt:
-        print(Fore.RED + "🛑 Bot stopped manually.")
 
     except KeyboardInterrupt:
         print(Fore.RED + "🛑 Bot stopped manually.")
