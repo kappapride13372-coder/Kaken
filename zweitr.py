@@ -256,33 +256,7 @@ def place_stop_loss(symbol, entry_price, side, volume, stop_loss_pct=0.4):
     txid = resp['result']['txid'][0]
     print(Fore.RED + f"🛑 Stop-loss set at {stop_price:.4f} | TXID {txid}")
     return txid
-
-def open_position(symbol, side, volume, leverage_type):
-    price = get_current_price(symbol)
-    if not price:
-        return
-
-    # Exposure is total value of position
-    exposure = volume * price
-
-    # Adjust margin according to leverage
-    leverage = 2 if leverage_type == "margin" else 1
-    margin = exposure / leverage
-
-    pos = {
-        "side": side,
-        "volume": volume,
-        "entry_price": price,
-        "exposure": exposure,
-        "margin": margin,
-        "leverage": leverage,
-        "type": leverage_type,
-        "timestamp": time.time()
-    }
-    positions[symbol].append(pos)
-
-    print(Fore.CYAN + f"📌 Position opened: {symbol} {side} {volume:.6f} @ {price:.2f} | "
-                       f"Exposure: ${exposure:.2f} | Margin: ${margin:.2f} | Lvg: {leverage}x")
+    
 def open_position(symbol, side, volume, leverage_type):
     price = get_current_price(symbol)
     if not price:
@@ -382,10 +356,25 @@ def calculate_trade_volume(symbol, leverage=2):
 def format_pnl(value):
     """Format PnL with + / - sign and 2 decimals"""
     return f"{value:+,.2f}"
+# =======================
+# Check Kraken for existing positions
+# =======================
+def get_all_open_positions():
+    resp = kraken_private_request("OpenPositions")
+    if resp.get("error"):
+        print(Fore.RED + f"❌ Error fetching open positions: {resp['error']}")
+        return {}
+    return resp.get("result", {})
 
-# =======================
-# Main loop
-# =======================
+def is_already_long_on_kraken(symbol, open_positions):
+    pair = resolve_pair(symbol)
+    if not pair:
+        return False
+    for txid, pos in open_positions.items():
+        if pos.get("pair") == pair and pos.get("type") == "buy":
+            return True
+    return False
+
 if __name__ == "__main__":
     print(Fore.CYAN + "🚀 Kraken Bot started")
     print(Fore.YELLOW + "✅ Pair cache loaded and ready")
@@ -398,6 +387,9 @@ if __name__ == "__main__":
     try:
         while True:
             now = time.time()
+
+            # --- Fetch all open positions from Kraken once per loop ---
+            open_positions = get_all_open_positions()
 
             # --- Scan symbols for entries/exits ---
             for symbol in symbols:
@@ -415,6 +407,12 @@ if __name__ == "__main__":
                     print(Fore.CYAN + f"[{symbol}] Scanning {last_closed['time']} | "
                                        f"Close={last_closed['close']:.4f}, Lower={last_closed['lower']:.4f}")
 
+                    # --- Skip if already long on Kraken ---
+                    if is_already_long_on_kraken(symbol, open_positions):
+                        print(Fore.YELLOW + f"⚠️ Already long {symbol} on Kraken — skipping entry")
+                        continue
+
+                    # --- Scan for new entry ---
                     scan_for_entry(symbol, last_closed)
 
                     # Close positions if price above mean
@@ -425,54 +423,54 @@ if __name__ == "__main__":
                 except Exception as e:
                     print(Fore.RED + f"[{symbol}] Skipping symbol due to error: {e}")
 
-            # --- Portfolio update ---
-            if now - last_portfolio_update >= portfolio_update_interval or not initial_scan_done:
-                last_portfolio_update = now
-                initial_scan_done = True
+                # --- Portfolio update ---
+                if now - last_portfolio_update >= portfolio_update_interval or not initial_scan_done:
+                    last_portfolio_update = now
+                    initial_scan_done = True
 
-                total_equity = get_total_equity_usd()
-                print(Style.BRIGHT + Fore.MAGENTA + f"\n📊 Portfolio Update @ {datetime.now(timezone.utc)} | Total Equity: ${total_equity:.2f}")
+                    total_equity = get_total_equity_usd()
+                    print(Style.BRIGHT + Fore.MAGENTA + f"\n📊 Portfolio Update @ {datetime.now(timezone.utc)} | Total Equity: ${total_equity:.2f}")
 
-                # Print each position
-                for sym in symbols:
-                    for pos in positions[sym]:
-                        current_price = get_current_price(sym)
-                        if current_price is None:
-                            continue
+                    # Print each position
+                    for sym in symbols:
+                        for pos in positions[sym]:
+                            current_price = get_current_price(sym)
+                            if current_price is None:
+                                continue
 
-                        pos_value = pos['volume'] * current_price
-                        margin = pos['exposure'] / pos['leverage']
+                            pos_value = pos['volume'] * current_price
+                            margin = pos['exposure'] / pos['leverage']
 
-                        if pos['side'] == "buy":
-                            unrealized = (current_price - pos['entry_price']) * pos['volume']
-                        else:
-                            unrealized = (pos['entry_price'] - current_price) * pos['volume']
+                            if pos['side'] == "buy":
+                                unrealized = (current_price - pos['entry_price']) * pos['volume']
+                            else:
+                                unrealized = (pos['entry_price'] - current_price) * pos['volume']
 
-                        print(Fore.LIGHTWHITE_EX + f"[{sym}] Side: {pos['side'].upper()} | "
-                                                    f"Entry: {pos['entry_price']:.4f} | Qty: {pos['volume']:.6f} | "
-                                                    f"Current: {current_price:.4f} | Exposure: ${pos_value:.2f} | "
-                                                    f"Margin: ${margin:.2f} | Lvg: {pos['leverage']}x | "
-                                                    f"PnL: {format_pnl(unrealized)}")
+                            print(Fore.LIGHTWHITE_EX + f"[{sym}] Side: {pos['side'].upper()} | "
+                                                        f"Entry: {pos['entry_price']:.4f} | Qty: {pos['volume']:.6f} | "
+                                                        f"Current: {current_price:.4f} | Exposure: ${pos_value:.2f} | "
+                                                        f"Margin: ${margin:.2f} | Lvg: {pos['leverage']}x | "
+                                                        f"PnL: {format_pnl(unrealized)}")
 
-                # Total portfolio summary
-                cash_usd = float(get_account_balance().get("ZUSD", 0))
-                total_margin = sum(p['exposure'] / p['leverage'] for sym in positions for p in positions[sym])
-                total_exposure = sum(p['exposure'] for sym in positions for p in positions[sym])
+                    # Total portfolio summary
+                    cash_usd = float(get_account_balance().get("ZUSD", 0))
+                    total_margin = sum(p['exposure'] / p['leverage'] for sym in positions for p in positions[sym])
+                    total_exposure = sum(p['exposure'] for sym in positions for p in positions[sym])
 
-                print(Fore.LIGHTBLUE_EX + f"\n💰 Cash: ${cash_usd:.2f} | "
-                                           f"Total Margin: ${total_margin:.2f} | "
-                                           f"Total Exposure: ${total_exposure:.2f} | "
-                                           f"Total Equity: ${total_equity:.2f}\n")
+                    print(Fore.LIGHTBLUE_EX + f"\n💰 Cash: ${cash_usd:.2f} | "
+                                               f"Total Margin: ${total_margin:.2f} | "
+                                               f"Total Exposure: ${total_exposure:.2f} | "
+                                               f"Total Equity: ${total_equity:.2f}\n")
 
-                # Time until next 4h candle
-                now_utc = datetime.now(timezone.utc)
-                hours = now_utc.hour % 4
-                minutes = now_utc.minute
-                seconds = now_utc.second
-                seconds_until_next_candle = ((3 - hours) * 3600) + ((59 - minutes) * 60) + (60 - seconds)
-                print(Fore.LIGHTBLUE_EX + f"⏱ Time until next entry scan: {seconds_until_next_candle//3600}h "
-                                           f"{(seconds_until_next_candle%3600)//60}m {seconds_until_next_candle%60}s")
-                print(Fore.MAGENTA + "-"*60)
+                    # Time until next 4h candle
+                    now_utc = datetime.now(timezone.utc)
+                    hours = now_utc.hour % 4
+                    minutes = now_utc.minute
+                    seconds = now_utc.second
+                    seconds_until_next_candle = ((3 - hours) * 3600) + ((59 - minutes) * 60) + (60 - seconds)
+                    print(Fore.LIGHTBLUE_EX + f"⏱ Time until next entry scan: {seconds_until_next_candle//3600}h "
+                                               f"{(seconds_until_next_candle%3600)//60}m {seconds_until_next_candle%60}s")
+                    print(Fore.MAGENTA + "-"*60)
 
             time.sleep(10)
 
