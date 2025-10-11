@@ -205,8 +205,7 @@ def print_portfolio_status():
     if margin_used > 0:
         leverage_ratio = round(exposure / margin_used, 2)
 
-    print(Style.BRIGHT + Fore.CYAN + "
-📊 Portfolio Status")
+    print(Style.BRIGHT + Fore.CYAN + "📊 Portfolio Status")
     print(Fore.WHITE + f"💰 USD Balance: {total_usd:,.2f}")
     print(Fore.YELLOW + f"📈 Exposure: {exposure:,.2f} USD")
     print(Fore.MAGENTA + f"🪙 Margin Used: {margin_used:,.2f} USD")
