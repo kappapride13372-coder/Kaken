@@ -79,7 +79,7 @@ symbols = [
 ]
 bollinger_length = 180
 bollinger_std = 3
-position_size_pct = 0.2
+position_size_pct = 0.01
 stop_loss_pct = 0.40
 
 positions = {s: [] for s in symbols}
