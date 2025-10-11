@@ -367,12 +367,27 @@ def get_all_open_positions():
     return resp.get("result", {})
 
 def is_already_long_on_kraken(symbol, open_positions):
+    """
+    Check if there is already an open long (buy) position for the given symbol on Kraken.
+    Works for both spot and margin positions.
+    """
     pair = resolve_pair(symbol)
     if not pair:
         return False
+
     for txid, pos in open_positions.items():
-        if pos.get("pair") == pair and pos.get("type") == "buy":
+        # Check if the position matches the pair
+        if pos.get("pair") != pair:
+            continue
+
+        # Margin positions: type is 'margin', actual direction in descr.type
+        # Spot positions: type can be 'buy' or 'sell'
+        pos_type = pos.get("type")
+        descr_type = pos.get("descr", {}).get("type")
+
+        if (pos_type == "buy") or (pos_type == "margin" and descr_type == "buy"):
             return True
+
     return False
 
 if __name__ == "__main__":
