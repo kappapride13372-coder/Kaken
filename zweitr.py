@@ -188,7 +188,7 @@ def scan_for_entry(symbol, last_closed):
     lower = last_closed['lower']
 
     if close < lower:
-        # Calculate trade size with leverage = 2x
+        # Calculate trade size based on total portfolio equity with leverage = 2x
         volume = calculate_trade_volume(symbol, leverage=2)
         if volume <= 0:
             print(Fore.YELLOW + f"Skipping {symbol} due to zero volume")
@@ -214,24 +214,23 @@ def place_market_order(symbol, side, volume, desired_order_type="margin"):
     if volume <= 0:
         print(Fore.RED + f"Invalid volume for {symbol}")
         return None
+
     pair = resolve_pair(symbol)
     if not pair:
         return None
 
     data = {"pair": pair, "type": side, "ordertype": "market", "volume": f"{volume:.8f}"}
-    
-    # Try margin if requested
+
     if desired_order_type == "margin":
         data["leverage"] = "2:1"
-    
+
     resp = kraken_private_request("AddOrder", data)
-    
-    # If margin order fails, fallback to spot
+
+    # Fallback to spot if margin fails
     if resp.get("error"):
         if desired_order_type == "margin":
             print(Fore.YELLOW + f"Margin order failed for {symbol}: {resp['error']}. Trying spot order...")
             data.pop("leverage")
-            data["ordertype"] = "market"
             resp = kraken_private_request("AddOrder", data)
         if resp.get("error"):
             print(Fore.RED + f"Order failed for {symbol}: {resp['error']}")
@@ -267,9 +266,35 @@ def open_position(symbol, side, volume, leverage_type):
     # Exposure is total value of position
     exposure = volume * price
 
-    # Margin is adjusted for leverage
-    margin = exposure / 2 if leverage_type == "margin" else exposure
+    # Adjust margin according to leverage
     leverage = 2 if leverage_type == "margin" else 1
+    margin = exposure / leverage
+
+    pos = {
+        "side": side,
+        "volume": volume,
+        "entry_price": price,
+        "exposure": exposure,
+        "margin": margin,
+        "leverage": leverage,
+        "type": leverage_type,
+        "timestamp": time.time()
+    }
+    positions[symbol].append(pos)
+
+    print(Fore.CYAN + f"📌 Position opened: {symbol} {side} {volume:.6f} @ {price:.2f} | "
+                       f"Exposure: ${exposure:.2f} | Margin: ${margin:.2f} | Lvg: {leverage}x")
+def open_position(symbol, side, volume, leverage_type):
+    price = get_current_price(symbol)
+    if not price:
+        return
+
+    # Exposure is total value of position
+    exposure = volume * price
+
+    # Adjust margin according to leverage
+    leverage = 2 if leverage_type == "margin" else 1
+    margin = exposure / leverage
 
     pos = {
         "side": side,
@@ -304,42 +329,34 @@ def get_account_balance():
 # =======================
 def get_total_equity_usd():
     """
-    Calculate total account equity in USD: cash + value of all open positions (live from Kraken)
+    Calculate total portfolio equity in USD:
+    cash + value of all coins (including open positions)
     """
     balances = get_account_balance()
     if not balances:
         return 0
 
-    # Cash in USD
-    usd_balance = float(balances.get("ZUSD", 0))
-
-    # Fetch live open positions from Kraken
-    resp = kraken_private_request("OpenPositions")
-    if resp.get("error"):
-        print(Fore.RED + f"❌ OpenPositions error: {resp['error']}")
-        return usd_balance
-
-    open_positions = resp.get("result", {})
-    total_position_value = 0
-
-    for pos_id, pos in open_positions.items():
-        pair = pos.get("pair")
-        vol = float(pos.get("vol", 0))
-        # Get current price of base asset
-        symbol = pair.replace("ZUSD", "")  # crude extraction: BTCUSD → BTC
-        current_price = get_current_price(symbol)
-        if current_price is None:
+    total_equity = 0
+    for asset, amount in balances.items():
+        amount = float(amount)
+        if amount <= 0:
             continue
 
-        # Calculate exposure in USD
-        exposure = vol * current_price
-        total_position_value += exposure
+        if asset == "ZUSD":  # Cash
+            total_equity += amount
+        else:
+            symbol = asset.replace("X", "").replace("Z", "") + "USD"
+            price = get_current_price(symbol)
+            if price is not None:
+                total_equity += amount * price
 
-    total_equity = usd_balance + total_position_value
     return total_equity
 
 def calculate_trade_volume(symbol, leverage=2):
-    """Calculate number of units to buy for target exposure with given leverage"""
+    """
+    Calculate number of units to buy for target exposure with given leverage.
+    Position sizing is based on TOTAL portfolio equity (cash + coins).
+    """
     equity = get_total_equity_usd()
     if equity <= 0:
         print(Fore.RED + "❌ Cannot calculate trade size: equity is zero")
@@ -349,19 +366,18 @@ def calculate_trade_volume(symbol, leverage=2):
     if not price:
         return 0
 
-    # Desired USD exposure for this position
+    # Target exposure in USD for this trade
     target_exposure = equity * position_size_pct
-
-    # Margin required considering leverage
-    margin_required = target_exposure / leverage
 
     # Asset units to buy to reach target exposure
     volume_asset = target_exposure / price
 
+    # Margin required for leveraged trades
+    margin_required = target_exposure / leverage
+
     print(Fore.LIGHTBLUE_EX + f"[{symbol}] Total equity: ${equity:.2f} | "
                                f"Target exposure: ${target_exposure:.2f} (~{volume_asset:.6f} {symbol}), "
-                               f"margin required: ${margin_required:.2f} @ {leverage}x leverage")
-
+                               f"Margin required: ${margin_required:.2f} @ {leverage}x leverage")
     return volume_asset
 
 def format_pnl(value):
