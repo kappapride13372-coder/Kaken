@@ -299,18 +299,21 @@ def get_account_balance():
 # =======================
 # Portfolio & exposure
 # =======================
+# =======================
+# Portfolio & exposure
+# =======================
 def get_total_equity_usd():
     """Return total account equity in USD (cash + value of all positions)"""
     balances = get_account_balance()
     if not balances:
         return 0
     usd_balance = float(balances.get("ZUSD", 0))  # cash in USD
-    # Calculate exposure: current market value of all positions
+    # Current value of all positions
     exposure = sum(p['volume'] * get_current_price(sym) for sym in positions for p in positions[sym])
     return usd_balance + exposure
 
 def calculate_trade_volume(symbol):
-    """Calculate how many units of symbol to buy for target exposure with leverage"""
+    """Calculate number of units to buy for target exposure with 2x leverage"""
     equity = get_total_equity_usd()
     if equity <= 0:
         print(Fore.RED + "❌ Cannot calculate trade size: equity is zero")
@@ -319,19 +322,20 @@ def calculate_trade_volume(symbol):
     if not price:
         return 0
 
-    # --- USD exposure we want per position ---
+    # --- desired USD exposure for this position ---
     target_exposure = equity * position_size_pct
 
-    # --- margin required with 2:1 leverage ---
-    margin_required = target_exposure / 2
+    # --- margin required considering 2x leverage ---
+    leverage = 2
+    margin_required = target_exposure / leverage
 
-    # --- asset volume to buy to achieve target exposure ---
+    # --- asset units to buy to reach target exposure ---
     volume_asset = target_exposure / price
 
-    # --- print intended allocation ---
+    # --- print allocation and margin ---
     print(Fore.LIGHTBLUE_EX + f"[{symbol}] Total equity: ${equity:.2f} | "
                                f"Target exposure: ${target_exposure:.2f} (~{volume_asset:.6f} {symbol}), "
-                               f"margin required: ${margin_required:.2f} @ 2x leverage")
+                               f"margin required: ${margin_required:.2f} @ {leverage}x leverage")
 
     return volume_asset
 
