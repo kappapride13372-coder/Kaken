@@ -183,27 +183,68 @@ def calculate_bollinger(df):
 # Trading logic
 # =======================
 def scan_for_entry(symbol, last_closed):
+    """
+    Scan for new entry based on Bollinger lower band.
+    Only open new positions if not already long on Kraken or in memory.
+    """
     close = last_closed['close']
     lower = last_closed['lower']
 
     if close < lower:
-        # Calculate trade size based on total portfolio equity with leverage = 2x
+        # Calculate trade volume
         volume = calculate_trade_volume(symbol, leverage=2)
         if volume <= 0:
             print(Fore.YELLOW + f"Skipping {symbol} due to zero volume")
             return
 
-        # Place margin order
+        # Skip if already long in memory
+        if positions.get(symbol) and len(positions[symbol]) > 0:
+            print(Fore.YELLOW + f"⚠️ Already tracking position for {symbol}, skipping entry")
+            return
+
+        # Skip if already long on Kraken
+        open_positions = get_all_open_positions()
+        already_long = is_already_long_on_kraken(symbol, open_positions)
+        if already_long:
+            print(Fore.YELLOW + f"⚠️ Already long {symbol} on Kraken, skipping entry")
+            return
+
+        # Place margin order and track position
         result = place_market_order(symbol, "buy", volume, "margin")
         if result:
             vol, price, lvg_type = result
             open_position(symbol, "buy", vol, lvg_type)
-            place_stop_loss(symbol, price, "buy", vol, stop_loss_pct)
+
+def sync_stop_loss_txids():
+    """Match open stop-loss orders from Kraken to positions."""
+    open_orders = get_open_orders()
+    for symbol, pos_list in positions.items():
+        for pos in pos_list:
+            if pos.get("stop_loss_txid"):
+                continue  # already tracked
+            # Find a stop-loss for this symbol and volume
+            for oid, order in open_orders.items():
+                if (order.get("descr", {}).get("pair") == resolve_pair(symbol) and
+                    order.get("descr", {}).get("ordertype") == "stop-loss" and
+                    float(order.get("vol", 0)) == pos["volume"]):
+                    pos["stop_loss_txid"] = oid
+                    break
+    save_positions()
 
 def close_position(symbol, pos):
-    volume = pos['volume']
-    place_market_order(symbol, "sell", volume, pos['type'])
+    """Close position and cancel its stop-loss before exiting."""
+    # Cancel stop-loss if exists
+    if pos.get("stop_loss_txid"):
+        resp = kraken_private_request("CancelOrder", {"txid": pos["stop_loss_txid"]})
+        if resp.get("error"):
+            print(Fore.RED + f"Failed to cancel stop-loss {pos['stop_loss_txid']} for {symbol}: {resp['error']}")
+        else:
+            print(Fore.YELLOW + f"🗑 Canceled stop-loss {pos['stop_loss_txid']} for {symbol}")
+
+    # Place market order to exit
+    place_market_order(symbol, "sell", pos['volume'], pos['type'])
     positions[symbol].remove(pos)
+    save_positions()
     print(Fore.YELLOW + f"❌ Position closed {symbol}")
 
 # =======================
@@ -262,12 +303,13 @@ def open_position(symbol, side, volume, leverage_type):
     if not price:
         return
 
-    # Exposure is total value of position
+    # Exposure & margin
     exposure = volume * price
-
-    # Adjust margin according to leverage
     leverage = 2 if leverage_type == "margin" else 1
     margin = exposure / leverage
+
+    # Place stop-loss and save txid
+    stop_loss_txid = place_stop_loss(symbol, price, side, volume, stop_loss_pct)
 
     pos = {
         "side": side,
@@ -277,12 +319,36 @@ def open_position(symbol, side, volume, leverage_type):
         "margin": margin,
         "leverage": leverage,
         "type": leverage_type,
+        "stop_loss_txid": stop_loss_txid,
         "timestamp": time.time()
     }
     positions[symbol].append(pos)
+    save_positions()
 
     print(Fore.CYAN + f"📌 Position opened: {symbol} {side} {volume:.6f} @ {price:.2f} | "
-                       f"Exposure: ${exposure:.2f} | Margin: ${margin:.2f} | Lvg: {leverage}x")
+                       f"Exposure: ${exposure:.2f} | Margin: ${margin:.2f} | Lvg: {leverage}x | Stop-loss TXID: {stop_loss_txid}")
+
+def get_open_orders():
+    resp = kraken_private_request("OpenOrders")
+    if resp.get("error"):
+        print(Fore.RED + f"❌ Error fetching open orders: {resp['error']}")
+        return {}
+    return resp.get("result", {}).get("open", {})
+
+def cancel_stop_loss_orders(symbol):
+    open_orders = get_open_orders()
+    pair = resolve_pair(symbol)
+    canceled_orders = []
+
+    for oid, order in open_orders.items():
+        if order.get("descr", {}).get("pair") == pair and order.get("descr", {}).get("ordertype") == "stop-loss":
+            resp = kraken_private_request("CancelOrder", {"txid": oid})
+            if resp.get("error"):
+                print(Fore.RED + f"Failed to cancel stop-loss {oid} for {symbol}: {resp['error']}")
+            else:
+                print(Fore.YELLOW + f"🗑 Canceled stop-loss {oid} for {symbol}")
+                canceled_orders.append(oid)
+    return canceled_orders
 
 # =======================
 # Portfolio & exposure
@@ -294,12 +360,6 @@ def get_account_balance():
         return {}
     return resp["result"]
     
-# =======================
-# Portfolio & exposure
-# =======================
-# =======================
-# Portfolio & exposure
-# =======================
 def get_total_equity_usd():
     """
     Calculate total portfolio equity in USD:
@@ -377,10 +437,74 @@ def is_already_long_on_kraken(symbol, open_positions):
             return True
     return False
 
+POSITIONS_FILE = "positions.json"
+
+def save_positions():
+    """Save current positions to a JSON file."""
+    with open(POSITIONS_FILE, "w") as f:
+        json.dump(positions, f, indent=2)
+
+def load_positions():
+    """Load positions from JSON file on startup."""
+    global positions
+    if os.path.isfile(POSITIONS_FILE):
+        try:
+            with open(POSITIONS_FILE, "r") as f:
+                positions = json.load(f)
+                # Convert numeric fields back to float
+                for sym, pos_list in positions.items():
+                    for pos in pos_list:
+                        for key in ['volume', 'entry_price', 'exposure', 'margin', 'leverage']:
+                            if key in pos:
+                                pos[key] = float(pos[key])
+        except Exception as e:
+            print(Fore.RED + f"⚠️ Failed to load positions: {e}")
+            positions = {s: [] for s in symbols}
+    else:
+        positions = {s: [] for s in symbols}
+def resolve_symbol_from_pair(pair):
+    """Convert Kraken pair string back to symbol, e.g., XXBTZUSD -> BTCUSD"""
+    for sym, p in PAIR_CACHE.items():
+        if p == pair:
+            return sym
+    return None
+
+def sync_positions_from_kraken():
+    """Rebuild positions from Kraken open positions after a restart."""
+    open_positions = get_all_open_positions()
+    for txid, pos in open_positions.items():
+        symbol = resolve_symbol_from_pair(pos['pair'])
+        if not symbol:
+            continue
+        if symbol not in positions:
+            positions[symbol] = []
+
+        # Only track long positions for now
+        positions[symbol].append({
+            "side": "buy" if pos.get('type') == "buy" else "sell",
+            "volume": float(pos.get('vol', 0)),
+            "entry_price": float(pos.get('cost', 0)) / float(pos.get('vol', 1)),
+            "exposure": float(pos.get('cost', 0)),
+            "margin": float(pos.get('cost', 0)) / 2,  # assume leverage=2 if margin
+            "leverage": 2 if pos.get('type') == "margin" else 1,
+            "type": "margin" if pos.get('type') == "margin" else "spot",
+            "stop_loss_txid": None,  # can try mapping from OpenOrders later
+            "timestamp": time.time()
+        })
+    save_positions()
+    print(Fore.GREEN + "✅ Positions synced from Kraken.")
+
+
 if __name__ == "__main__":
-    print(Fore.CYAN + "🚀 Kraken Bot started")
-    print(Fore.YELLOW + "✅ Pair cache loaded and ready")
-    print(Fore.WHITE + "Press CTRL+C to stop.\n")
+    print(Fore.CYAN + "🚀 Kraken Bot starting up...")
+
+    # Load previous positions from JSON
+    load_positions()
+
+    # Sync open positions from Kraken
+    sync_positions_from_kraken()
+
+    print(Fore.GREEN + "✅ Bot ready. Tracking positions for take-profit and stop-loss.")
 
     last_portfolio_update = 0
     portfolio_update_interval = 300  # 5 minutes
