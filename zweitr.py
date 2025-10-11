@@ -133,8 +133,9 @@ def resolve_pair(symbol):
     for v in variants:
         if v in PAIR_CACHE:
             return PAIR_CACHE[v]
-    PAIR_CACHE.update(build_pair_cache())
-    return PAIR_CACHE.get(symbol)
+    # Don't rebuild every time; just warn
+    print(Fore.RED + f"❌ Unknown symbol: {symbol}. Consider refreshing pair cache.")
+    return None
 
 # =======================
 # Kraken helpers
@@ -185,11 +186,15 @@ def calculate_bollinger(df):
 def scan_for_entry(symbol, last_closed):
     close = last_closed['close']
     lower = last_closed['lower']
+
     if close < lower:
-        volume = calculate_trade_volume(symbol)
+        # Calculate trade size in asset units
+        volume = calculate_trade_volume(symbol, leverage=2)
         if volume <= 0:
             print(Fore.YELLOW + f"Skipping {symbol} due to zero volume")
             return
+
+        # Place margin order
         result = place_market_order(symbol, "buy", volume, "margin")
         if result:
             vol, price, lvg_type = result
@@ -258,13 +263,28 @@ def open_position(symbol, side, volume, leverage_type):
     price = get_current_price(symbol)
     if not price:
         return
+
+    # Exposure is total value of position
     exposure = volume * price
+
+    # Margin is adjusted for leverage
     margin = exposure / 2 if leverage_type == "margin" else exposure
-    pos = {"side": side, "volume": volume, "entry_price": price, "exposure": exposure,
-           "margin": margin, "leverage": 2 if leverage_type=="margin" else 1, "type": leverage_type,
-           "timestamp": time.time()}
+    leverage = 2 if leverage_type == "margin" else 1
+
+    pos = {
+        "side": side,
+        "volume": volume,
+        "entry_price": price,
+        "exposure": exposure,
+        "margin": margin,
+        "leverage": leverage,
+        "type": leverage_type,
+        "timestamp": time.time()
+    }
     positions[symbol].append(pos)
-    print(Fore.CYAN + f"📌 Position opened: {symbol} {side} {volume} @ {price:.2f} | Exposure: {exposure:.2f} | Margin: {margin:.2f} | Lvg: {pos['leverage']}x")
+
+    print(Fore.CYAN + f"📌 Position opened: {symbol} {side} {volume:.6f} @ {price:.2f} | "
+                       f"Exposure: ${exposure:.2f} | Margin: ${margin:.2f} | Lvg: {leverage}x")
 
 # =======================
 # Portfolio & exposure
@@ -286,38 +306,45 @@ def get_total_equity_usd():
 
 def calculate_trade_volume(symbol, leverage=2):
     """
-    Calculates the trade size for a given symbol, taking leverage into account.
-    
-    - volume_usd: desired exposure (percentage of total equity)
-    - margin_required: actual cash required given leverage
-    - volume_asset: amount of asset to order on Kraken
+    Calculates trade volume in asset units, accounting for leverage.
+    Ensures each position targets the same % of total equity.
     """
-    equity = get_total_equity_usd()
-    if equity <= 0:
-        print(Fore.RED + "❌ Cannot calculate trade size: equity is zero")
+    # Step 1: total equity (cash + current positions)
+    balances = get_account_balance()
+    if not balances:
+        return 0
+    cash_usd = float(balances.get("ZUSD", 0))
+
+    # Current portfolio exposure
+    portfolio_value_usd = sum(
+        p['volume'] * get_current_price(sym)
+        for sym in positions for p in positions[sym]
+    )
+
+    total_equity = cash_usd + portfolio_value_usd
+    if total_equity <= 0:
+        print(Fore.RED + "❌ Equity is zero, cannot calculate trade size")
         return 0
 
-    price = get_current_price(symbol)
-    if not price:
+    # Step 2: desired exposure for new position
+    desired_exposure_usd = total_equity * position_size_pct
+
+    # Step 3: margin required given leverage
+    margin_required_usd = desired_exposure_usd / leverage
+
+    # Step 4: volume in asset
+    current_price = get_current_price(symbol)
+    if not current_price:
         return 0
+    volume_asset = desired_exposure_usd / current_price
 
-    # Desired exposure in USD (e.g., 20% of total equity)
-    volume_usd = equity * position_size_pct
-
-    # Actual cash required for this trade given leverage
-    margin_required = volume_usd / leverage
-
-    # Amount of asset to order on Kraken (Kraken applies leverage automatically)
-    volume_asset = volume_usd / price
-
-    # Print clear info
-    print(Fore.LIGHTBLUE_EX + f"[{symbol}] Target exposure: ${volume_usd:.2f} "
-                              f"({volume_asset:.6f} {symbol}), "
-                              f"margin needed: ${margin_required:.2f} with {leverage}x leverage")
+    # Step 5: print debug info
+    print(Fore.LIGHTBLUE_EX + f"[{symbol}] Total equity: ${total_equity:.2f} | "
+                              f"Target exposure: ${desired_exposure_usd:.2f} "
+                              f"(~{volume_asset:.6f} {symbol}), "
+                              f"margin required: ${margin_required_usd:.2f} @ {leverage}x leverage")
 
     return volume_asset
-
-
 def format_pnl(value):
     return f"{value:+,.2f}"
 
@@ -337,7 +364,7 @@ if __name__ == "__main__":
         while True:
             now = time.time()
 
-            # Scan symbols
+            # --- Scan symbols for entries/exits ---
             for symbol in symbols:
                 try:
                     df = fetch_ohlc(symbol)
@@ -350,16 +377,20 @@ if __name__ == "__main__":
                         continue
                     last_scanned[symbol] = last_closed['time']
 
-                    print(Fore.CYAN + f"[{symbol}] Scanning {last_closed['time']} | Close={last_closed['close']:.4f}, Lower={last_closed['lower']:.4f}")
+                    print(Fore.CYAN + f"[{symbol}] Scanning {last_closed['time']} | "
+                                       f"Close={last_closed['close']:.4f}, Lower={last_closed['lower']:.4f}")
 
                     scan_for_entry(symbol, last_closed)
+
+                    # Close positions if price above mean
                     for pos in positions[symbol][:]:
                         if last_closed['close'] > last_closed['mean']:
                             close_position(symbol, pos)
+
                 except Exception as e:
                     print(Fore.RED + f"[{symbol}] Skipping symbol due to error: {e}")
 
-            # Portfolio update
+            # --- Portfolio update ---
             if now - last_portfolio_update >= portfolio_update_interval or not initial_scan_done:
                 last_portfolio_update = now
                 initial_scan_done = True
@@ -367,14 +398,36 @@ if __name__ == "__main__":
                 total_equity = get_total_equity_usd()
                 print(Style.BRIGHT + Fore.MAGENTA + f"\n📊 Portfolio Update @ {datetime.now(timezone.utc)} | Total Equity: ${total_equity:.2f}")
 
+                # Print each position
                 for sym in symbols:
                     for pos in positions[sym]:
                         current_price = get_current_price(sym)
                         if current_price is None:
                             continue
-                        pos_value = current_price * pos['volume']
-                        unrealized = (current_price - pos['entry_price']) * pos['volume'] if pos['side']=="buy" else (pos['entry_price'] - current_price) * pos['volume']
-                        print(Fore.LIGHTWHITE_EX + f"[{sym}] Entry: {pos['entry_price']:.4f} | Qty: {pos['volume']:.4f} | Current: {current_price:.4f} | $ Value: {pos_value:.2f} | PnL: {format_pnl(unrealized)}")
+
+                        pos_value = pos['volume'] * current_price
+                        margin = pos['exposure'] / pos['leverage']
+
+                        if pos['side'] == "buy":
+                            unrealized = (current_price - pos['entry_price']) * pos['volume']
+                        else:
+                            unrealized = (pos['entry_price'] - current_price) * pos['volume']
+
+                        print(Fore.LIGHTWHITE_EX + f"[{sym}] Side: {pos['side'].upper()} | "
+                                                    f"Entry: {pos['entry_price']:.4f} | Qty: {pos['volume']:.6f} | "
+                                                    f"Current: {current_price:.4f} | Exposure: ${pos_value:.2f} | "
+                                                    f"Margin: ${margin:.2f} | Lvg: {pos['leverage']}x | "
+                                                    f"PnL: {format_pnl(unrealized)}")
+
+                # Total portfolio summary
+                cash_usd = float(get_account_balance().get("ZUSD", 0))
+                total_margin = sum(p['exposure'] / p['leverage'] for sym in positions for p in positions[sym])
+                total_exposure = sum(p['exposure'] for sym in positions for p in positions[sym])
+
+                print(Fore.LIGHTBLUE_EX + f"\n💰 Cash: ${cash_usd:.2f} | "
+                                           f"Total Margin: ${total_margin:.2f} | "
+                                           f"Total Exposure: ${total_exposure:.2f} | "
+                                           f"Total Equity: ${total_equity:.2f}\n")
 
                 # Time until next 4h candle
                 now_utc = datetime.now(timezone.utc)
@@ -382,7 +435,8 @@ if __name__ == "__main__":
                 minutes = now_utc.minute
                 seconds = now_utc.second
                 seconds_until_next_candle = ((3 - hours) * 3600) + ((59 - minutes) * 60) + (60 - seconds)
-                print(Fore.LIGHTBLUE_EX + f"⏱ Time until next entry scan: {seconds_until_next_candle//3600}h {(seconds_until_next_candle%3600)//60}m {seconds_until_next_candle%60}s")
+                print(Fore.LIGHTBLUE_EX + f"⏱ Time until next entry scan: {seconds_until_next_candle//3600}h "
+                                           f"{(seconds_until_next_candle%3600)//60}m {seconds_until_next_candle%60}s")
                 print(Fore.MAGENTA + "-"*60)
 
             time.sleep(10)
