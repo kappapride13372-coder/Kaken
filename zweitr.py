@@ -372,14 +372,11 @@ def is_already_long_on_kraken(symbol, open_positions):
         return False
 
     for txid, pos in open_positions.items():
-        # Only consider "buy" positions (longs)
+        # pos["type"] can be "margin" or "spot", we only care if it's a long
         if pos.get("pair") == pair and pos.get("type") == "buy":
             return True
     return False
 
-# =======================
-# Main loop
-# =======================
 if __name__ == "__main__":
     print(Fore.CYAN + "🚀 Kraken Bot started")
     print(Fore.YELLOW + "✅ Pair cache loaded and ready")
@@ -393,10 +390,12 @@ if __name__ == "__main__":
         while True:
             now = time.time()
 
-            # --- Fetch all open positions from Kraken once per loop ---
+            # --- Fetch open margin positions ---
             open_positions = get_all_open_positions()
 
-            # --- Scan symbols for entries/exits ---
+            # --- Fetch spot balances for assets in our symbols ---
+            balances = get_account_balance()
+
             for symbol in symbols:
                 try:
                     df = fetch_ohlc(symbol)
@@ -412,8 +411,11 @@ if __name__ == "__main__":
                     print(Fore.CYAN + f"[{symbol}] Scanning {last_closed['time']} | "
                                        f"Close={last_closed['close']:.4f}, Lower={last_closed['lower']:.4f}")
 
-                    # --- Skip if already long on Kraken (spot or margin) ---
-                    if is_already_long_on_kraken(symbol, open_positions):
+                    # --- Skip if already long on Kraken (margin or spot) ---
+                    already_long = is_already_long_on_kraken(symbol, open_positions)
+                    # Also check spot balances
+                    spot_amount = float(balances.get(symbol.replace("USD",""), 0))
+                    if already_long or spot_amount > 0:
                         print(Fore.YELLOW + f"⚠️ Already long {symbol} on Kraken — skipping entry")
                         continue
 
@@ -436,7 +438,6 @@ if __name__ == "__main__":
                 total_equity = get_total_equity_usd()
                 print(Style.BRIGHT + Fore.MAGENTA + f"\n📊 Portfolio Update @ {datetime.now(timezone.utc)} | Total Equity: ${total_equity:.2f}")
 
-                # Print each position
                 for sym in symbols:
                     for pos in positions[sym]:
                         current_price = get_current_price(sym)
@@ -458,7 +459,7 @@ if __name__ == "__main__":
                                                     f"PnL: {format_pnl(unrealized)}")
 
                 # Total portfolio summary
-                cash_usd = float(get_account_balance().get("ZUSD", 0))
+                cash_usd = float(balances.get("ZUSD", 0))
                 total_margin = sum(p['exposure'] / p['leverage'] for sym in positions for p in positions[sym])
                 total_exposure = sum(p['exposure'] for sym in positions for p in positions[sym])
 
