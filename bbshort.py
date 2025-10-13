@@ -92,10 +92,25 @@ if not PAIR_CACHE:
 
 def resolve_pair(symbol):
     """
-    Convert a user symbol (like BTCUSD, XLMUSD, ETHUSD) to Kraken AssetPair.
+    Convert a user symbol like BTCUSD, XBTUSD, ETHUSD to Kraken AssetPair.
+    Tries direct match, then strips X/Z prefix.
     """
     symbol = symbol.upper().replace("/", "")
-    return PAIR_CACHE.get(symbol)
+
+    # direct match
+    if symbol in PAIR_CACHE:
+        return PAIR_CACHE[symbol]
+
+    # try stripping leading X/Z from base/quote
+    for key in PAIR_CACHE:
+        normalized_key = key
+        if normalized_key.startswith(("X","Z")):
+            normalized_key = normalized_key[1:]
+        if normalized_key == symbol:
+            return PAIR_CACHE[key]
+
+    print(Fore.RED + f"❌ Could not resolve Kraken pair for {symbol}")
+    return None
 
 # =======================
 # Kraken helpers
