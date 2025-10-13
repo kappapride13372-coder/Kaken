@@ -40,6 +40,8 @@ last_scanned = {s: None for s in symbols}
 # =======================
 # Pair cache handling
 # =======================
+PAIR_CACHE_FILE = "kraken_pairs.json"
+
 def load_pair_cache():
     if os.path.isfile(PAIR_CACHE_FILE):
         try:
@@ -54,38 +56,46 @@ def save_pair_cache(cache):
         json.dump(cache, f, indent=2)
 
 def build_pair_cache():
+    """
+    Build a mapping from normalized symbols to Kraken AssetPairs.
+    Works for all coins, including X/Z prefixed symbols like XLM/USD or XBT/USD.
+    """
     print(Fore.YELLOW + "🔍 Building Kraken pair cache (AssetPairs)...")
     resp = kraken.query_public("AssetPairs")
     if resp.get("error"):
         print(Fore.RED + f"Error fetching AssetPairs: {resp['error']}")
         return {}
+
     cache = {}
     for pair_name, data in resp["result"].items():
+        # Use Kraken altname as main mapping
+        altname = data.get("altname", "").upper()
+        if altname:
+            cache[altname] = pair_name
+
+        # Also map combination of base + quote after stripping X/Z only from prefixes
         base = data.get("base", "")
         quote = data.get("quote", "")
-        base_norm = base.replace("X", "").replace("Z", "")
-        quote_norm = quote.replace("X", "").replace("Z", "")
-        key1 = (base_norm + quote_norm).upper()
-        cache[key1] = pair_name
-        if quote_norm.upper() == "USD":
-            cache[base_norm.upper()] = pair_name
+        base_norm = base[1:] if base.startswith(("X","Z")) else base
+        quote_norm = quote[1:] if quote.startswith(("X","Z")) else quote
+        combined = (base_norm + quote_norm).upper()
+        cache[combined] = pair_name
+
     save_pair_cache(cache)
     print(Fore.GREEN + f"✅ Pair cache built: {len(cache)} entries")
     return cache
 
+# Load or build cache
 PAIR_CACHE = load_pair_cache()
 if not PAIR_CACHE:
     PAIR_CACHE = build_pair_cache()
 
 def resolve_pair(symbol):
-    if symbol in PAIR_CACHE:
-        return PAIR_CACHE[symbol]
-    variants = [symbol, symbol.replace("/", "").upper()]
-    for v in variants:
-        if v in PAIR_CACHE:
-            return PAIR_CACHE[v]
-    # Don't rebuild every time; just warn
-    return None
+    """
+    Convert a user symbol (like BTCUSD, XLMUSD, ETHUSD) to Kraken AssetPair.
+    """
+    symbol = symbol.upper().replace("/", "")
+    return PAIR_CACHE.get(symbol)
 
 # =======================
 # Kraken helpers
