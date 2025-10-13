@@ -563,7 +563,7 @@ if __name__ == "__main__":
                     last_scanned[symbol] = last_closed['time']
 
                     print(Fore.CYAN + f"[{symbol}] Scanning {last_closed['time']} | "
-                                      f"Close={last_closed['close']:.4f}, Lower={last_closed['lower']:.4f}")
+                                      f"Close={last_closed['close']:.4f}, Upper={last_closed['upper']:.4f}")
 
                     # Skip if already long on Kraken or holding spot
                     already_long = is_already_short_on_kraken(symbol, open_positions)
