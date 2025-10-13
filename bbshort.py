@@ -58,9 +58,9 @@ def save_pair_cache(cache):
 def build_pair_cache():
     """
     Build a mapping from normalized symbols to Kraken AssetPairs.
-    Works for all coins, including X/Z prefixed symbols like XLM/USD or XBT/USD.
+    Handles X/Z prefixes for coins and USD/EUR quotes.
     """
-    print(Fore.YELLOW + "🔍 Building Kraken pair cache (AssetPairs)...")
+    print(Fore.YELLOW + "🔍 Building Kraken pair cache...")
     resp = kraken.query_public("AssetPairs")
     if resp.get("error"):
         print(Fore.RED + f"Error fetching AssetPairs: {resp['error']}")
@@ -68,18 +68,17 @@ def build_pair_cache():
 
     cache = {}
     for pair_name, data in resp["result"].items():
-        # Use Kraken altname as main mapping
-        altname = data.get("altname", "").upper()
-        if altname:
-            cache[altname] = pair_name
-
-        # Also map combination of base + quote after stripping X/Z only from prefixes
+        altname = data.get("altname", "").upper()  # e.g., "XBTUSD"
         base = data.get("base", "")
         quote = data.get("quote", "")
-        base_norm = base[1:] if base.startswith(("X","Z")) else base
-        quote_norm = quote[1:] if quote.startswith(("X","Z")) else quote
-        combined = (base_norm + quote_norm).upper()
-        cache[combined] = pair_name
+
+        # Normalized: strip X/Z prefix if present
+        base_norm = base[1:] if base.startswith(("X", "Z")) else base
+        quote_norm = quote[1:] if quote.startswith(("X", "Z")) else quote
+
+        # Store both versions
+        cache[altname] = pair_name
+        cache[(base_norm + quote_norm).upper()] = pair_name
 
     save_pair_cache(cache)
     print(Fore.GREEN + f"✅ Pair cache built: {len(cache)} entries")
@@ -92,19 +91,18 @@ if not PAIR_CACHE:
 
 def resolve_pair(symbol):
     """
-    Convert a user symbol like BTCUSD, XBTUSD, ETHUSD to Kraken AssetPair.
-    Tries direct match, then strips X/Z prefix.
+    Map a user symbol like BTCUSD, XBTUSD, ETHUSD to Kraken AssetPair.
+    Tries direct match first, then stripped X/Z prefixes.
     """
     symbol = symbol.upper().replace("/", "")
 
-    # direct match
     if symbol in PAIR_CACHE:
         return PAIR_CACHE[symbol]
 
-    # try stripping leading X/Z from base/quote
+    # try stripping X/Z from start of base & quote
     for key in PAIR_CACHE:
         normalized_key = key
-        if normalized_key.startswith(("X","Z")):
+        if normalized_key.startswith(("X", "Z")):
             normalized_key = normalized_key[1:]
         if normalized_key == symbol:
             return PAIR_CACHE[key]
