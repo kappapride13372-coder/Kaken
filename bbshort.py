@@ -28,7 +28,19 @@ PAIR_CACHE_FILE = "kraken_pairs.json"
 # Strategy parameters
 # =======================
 symbols = [
-"AAVE/USD","ADA/USD","AERO/USD","ALGO/USD","APE/USD","APT/USD","ARB/USD","ATOM/USD","AVAX/USD","AVNT/USD","AXS/USD","BAT/USD","BCH/USD","BLUR/USD","BNB/USD","BONK/USD","CHZ/USD","COMP/USD","CRV/USD","DAI/USD","DASH/USD","DOG/USD","DOT/USD","DYDX/USD","EIGEN/USD","ENA/USD","ENS/USD","FARTCOIN/USD","FET/USD","FIL/USD","FLOKI/USD","FLOW/USD","FLR/USD","GALA/USD","GOAT/USD","GRT/USD","ICP/USD","IMX/USD","INJ/USD","JASMY/USD","JUP/USD","KAITO/USD","KAS/USD","KAVA/USD","KEEP/USD","KNC/USD","KSM/USD","LDO/USD","LINK/USD","LRC/USD","MANA/USD","MELANIA/USD","MEW/USD","MINA/USD","MOG/USD","MOODENG/USD","MORPHO/USD","NANO/USD","NEAR/USD","OMG/USD","OM/USD","ONDO/USD","OP/USD","PAXG/USD","PENGU/USD","PEPE/USD","POL/USD","POPCAT/USD","PUMP/USD","PYTH/USD","QTUM/USD","RAY/USD","RENDER/USD","RUNE/USD","SAGA/USD","SAND/USD","SC/USD","SEI/USD","SHIB/USD","SNX/USD","SOL/USD","SPX/USD","STBL/USD","STRK/USD","STX/USD","SUI/USD","SUSHI/USD","SYRUP/USD","TAO/USD","TIA/USD","TON/USD","TRUMP/USD","TRX/USD","TURBO/USD","UNI/USD","USDC/USD","USDT/USD","VIRTUAL/USD","WIF/USD","WLD/USD","WLFI/USD","W/USD","XCN/USD","XDG/USD","ETC/USD","ETH/USD","LTC/USD","XPL/USD","XTZ/USD","XBT/USD","XLM/USD","XMR/USD","XRP/USD","ZEC/USD","YFI/USD","ZK/USD","ZRO/USD","ZRX/USD"]
+    "AAVEUSD", "ADAUSD", "AEROUSD", "ALGOUSD", "APEUSD", "APTUSD", "ARBUSD", "ATOMUSD", "AVAXUSD", "AVNTUSD",
+    "AXSUSD", "BATUSD", "BCHUSD", "BLURUSD", "BNBUSD", "BONKUSD", "CHZUSD", "COMPUSD", "CRVUSD", "DAIUSD",
+    "DASHUSD", "DOGUSD", "DOTUSD", "DYDXUSD", "EIGENUSD", "ENAUSD", "ENSUSD", "FARTCOINUSD", "FETUSD", "FILUSD",
+    "FLOKIUSD", "FLOWUSD", "FLRUSD", "GALAUSD", "GOATUSD", "GRTUSD", "ICPUSD", "IMXUSD", "INJUSD", "JASMYUSD",
+    "JUPUSD", "KAITOUSD", "KASUSD", "KAVAUSD", "KEEPUSD", "KNCUSD", "KSMUSD", "LDOUSD", "LINKUSD", "LRCUSD",
+    "MANAUSD", "MELANIAUSD", "MEWUSD", "MINAUSD", "MOGUSD", "MOODENGUSD", "MORPHOUSD", "NANOUSD", "NEARUSD",
+    "OMGUSD", "OMUSD", "ONDOUSD", "OPUSD", "PAXGUSD", "PENGUUSD", "PEPEUSD", "POLUSD", "POPCATUSD", "PUMPUSD",
+    "PYTHUSD", "QTUMUSD", "RAYUSD", "RENDERUSD", "RUNEUSD", "SAGAUSD", "SANDUSD", "SCUSD", "SEIUSD", "SHIBUSD",
+    "SNXUSD", "SOLUSD", "SPXUSD", "STBLUSD", "STRKUSD", "STXUSD", "SUIUSD", "SUSHIUSD", "SYRUPUSD", "TAOUSD",
+    "TIAUSD", "TONUSD", "TRUMPUSD", "TRXUSD", "TURBOUSD", "UNIUSD", "USDCUSD", "USDTUSD", "VIRTUALUSD", "WIFUSD",
+    "WLDUSD", "WLFIUSD", "WUSD", "XCNUSD", "XDGUSD", "ETCUSD", "ETHUSD", "LTCUSD", "XPLUSD", "XTZUSD", "XBTUSD",
+    "XLMUSD", "XMRUSD", "XRPUSD", "ZECUSD", "YFIUSD", "ZKUSD", "ZROUSD", "ZRXUSD"
+]
 bollinger_length = 60
 bollinger_std = 5
 position_size_pct = 0.10
@@ -471,21 +483,16 @@ def sync_positions_from_kraken():
 # Flag all existing open positions as bot-initiated
 # =======================
 def flag_all_open_positions_as_bot_initiated():
-    """
-    Marks all currently loaded positions as bot-initiated.
-    This ensures the bot manages stop-loss, take-profit, and closing logic.
-    """
-    for sym, pos_list in positions.items():
-        for pos in pos_list:
-            pos["bot_initiated"] = True      # Bot now "owns" this position
-            pos["userref"] = BOT_USERREF     # Optional: assign bot's reference
-            # Ensure numeric fields are floats
-            pos["volume"] = float(pos.get("volume", 0))
-            pos["entry_price"] = float(pos.get("entry_price", 0))
-            pos["exposure"] = float(pos.get("exposure", 0))
-            pos["leverage"] = float(pos.get("leverage", 1))
-    save_positions()
-    print(Fore.GREEN + "✅ All existing positions have been flagged as BOT-INITIATED.")
+    # 👇 Do nothing so this bot does not adopt foreign positions
+    print(Fore.YELLOW + "⚠️ Existing positions ignored — bot will only manage its own new ones.")
+
+def get_bot_positions():
+    all_positions = get_open_positions()  # gets everything from Kraken
+    bot_positions = [
+        p for p in all_positions
+        if str(p.get("userref")) == str(BOT_USERREF)
+    ]
+    return bot_positions
 
 if __name__ == "__main__":
     print(Fore.CYAN + "🚀 Kraken Bot starting up...")
