@@ -54,7 +54,9 @@ def load_pair_cache():
 def save_pair_cache(cache):
     with open(PAIR_CACHE_FILE, "w") as f:
         json.dump(cache, f, indent=2)
-
+# =======================
+# Pair cache handling (robust)
+# =======================
 def build_pair_cache():
     """
     Build a mapping from normalized symbols to Kraken AssetPairs.
@@ -72,34 +74,33 @@ def build_pair_cache():
         base = data.get("base", "")
         quote = data.get("quote", "")
 
-        # Normalized: strip X/Z prefix if present
+        # Normalize: strip X/Z prefix if present
         base_norm = base[1:] if base.startswith(("X", "Z")) else base
         quote_norm = quote[1:] if quote.startswith(("X", "Z")) else quote
 
-        # Store both versions
+        # Store mapping
         cache[altname] = pair_name
         cache[(base_norm + quote_norm).upper()] = pair_name
+
+        # Also store base+quote with original quote (for ZUSD, ZEUR etc)
+        cache[(base_norm + quote).upper()] = pair_name
 
     save_pair_cache(cache)
     print(Fore.GREEN + f"✅ Pair cache built: {len(cache)} entries")
     return cache
 
-# Load or build cache
-PAIR_CACHE = load_pair_cache()
-if not PAIR_CACHE:
-    PAIR_CACHE = build_pair_cache()
-
 def resolve_pair(symbol):
     """
     Map a user symbol like BTCUSD, XBTUSD, ETHUSD to Kraken AssetPair.
-    Tries direct match first, then stripped X/Z prefixes.
+    Tries direct match, normalized, and ZUSD fallback.
     """
     symbol = symbol.upper().replace("/", "")
 
+    # Direct match
     if symbol in PAIR_CACHE:
         return PAIR_CACHE[symbol]
 
-    # try stripping X/Z from start of base & quote
+    # Normalized X/Z stripping
     for key in PAIR_CACHE:
         normalized_key = key
         if normalized_key.startswith(("X", "Z")):
@@ -107,8 +108,21 @@ def resolve_pair(symbol):
         if normalized_key == symbol:
             return PAIR_CACHE[key]
 
+    # Fallback: force USD -> ZUSD, EUR -> ZEUR
+    if symbol.endswith("USD") and (symbol[:-3] + "ZUSD") in PAIR_CACHE:
+        return PAIR_CACHE[symbol[:-3] + "ZUSD"]
+    if symbol.endswith("EUR") and (symbol[:-3] + "ZEUR") in PAIR_CACHE:
+        return PAIR_CACHE[symbol[:-3] + "ZEUR"]
+
     print(Fore.RED + f"❌ Could not resolve Kraken pair for {symbol}")
     return None
+
+
+# Load or build cache
+PAIR_CACHE = load_pair_cache()
+if not PAIR_CACHE:
+    PAIR_CACHE = build_pair_cache()
+
 
 # =======================
 # Kraken helpers
