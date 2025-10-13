@@ -63,15 +63,15 @@ symbols = [
 "PHAUSD","ENSUSD","MLNUSD","TOKENUSD","TANSSIUSD","VELODROMEUSD","MIRUSD","MEWUSD","WCTUSD","FLRUSD",
 "JTOUSD","SPELLUSD","MUBARAKUSD","ORCAUSD","WALUSD","BATUSD","BLURUSD","JITOSOLUSD","PLAYUSD","LMWRUSD",
 "IMXUSD","GFIUSD","VIRTUALUSD","TURBOUSD","APEUSD","ESXUSD","WLFIUSD","RAIINUSD","LPTUSD","WENUSD",
-"LCXUSD","AVAAIUSD","0GUSD","BONKUSD","MOVRUSD","POWRUSD","UMAUSD","SANDUSD","AKTUSD","DOGUSD",
+"AVAAIUSD","0GUSD","BONKUSD","MOVRUSD","POWRUSD","UMAUSD","SANDUSD","AKTUSD","DOGUSD",
 "DYMUSD","DEEPUSD","DOTUSD","ARPAUSD","CHZUSD","XDCUSD","BERAUSD","DENTUSD","ACTUSD","2ZUSD",
 "GTCUSD","RENUSD","ATLASUSD","ANONUSD","CELRUSD","GMTUSD","BEAMUSD","AUDIOUSD","IPUSD","HNTUSD",
-"JASMYUSD","PERPUSD","CTSIUSD","AUCTIONUSD","BANDUSD","QNTUSD","LITUSD","DYDXUSD","RBCUSD","SBRUSD",
+"JASMYUSD","PERPUSD","CTSIUSD","AUCTIONUSD","BANDUSD","QNTUSD","LITUSD","RBCUSD","SBRUSD",
 "PRCLUSD","GLMRUSD","FLYUSD","BICOUSD","TUSD","XMRUSD","MEUSD","WLDUSD","CRVUSD","TNSRUSD",
 "USUALUSD","SAGAUSD","LSKUSD","RPLUSD","REDUSD","ZROUSD","PUMPUSD","PUFFERUSD","ETHFIUSD","BRICKUSD",
 "RLCUSD","PONKEUSD","PENDLEUSD","NILUSD","SWELLUSD","KINUSD","AIXBTUSD","TRUUSD","LQTYUSD","YGGUSD",
 "CARVUSD","KAITOUSD","GHSTUSD","1INCHUSD","VANRYUSD","STGUSD","BIOUSD","FARMUSD","SPKUSD","LUNA2USD",
-"CVXUSD","KP3RUSD","AEVOUSD","NMRUSD","PROVEUSD","SAHARAUSD","WAXLUSD","SPICEUSD","MIRAUSD","COQUSD",
+"CVXUSD","KP3RUSD","AEVOUSD","NMRUSD","PROVEUSD","SAHARAUSD","SPICEUSD","MIRAUSD","COQUSD",
 "EIGENUSD","SAROSUSD","FLOKIUSD","PEAQUSD","REPV2USD","ETHWUSD","JSTUSD","COTIUSD","LRCUSD","KAVAUSD",
 "REKTUSD","METISUSD","RSRUSD","GUNUSD","XTERUSD","CYBERUSD","KEEPUSD","REPUSD","API3USD","CATUSD",
 "WOOUSD","USTUSD","LDOUSD","BNCUSD","KASUSD","GARIUSD","LAYERUSD","COOKIEUSD","MNGOUSD","BABYUSD",
@@ -595,43 +595,61 @@ if __name__ == "__main__":
                     })
 
             # --- Scan for entries ---
-            for symbol in symbols:
+            # =======================
+            # Filter valid symbols once at startup
+            # =======================
+            if 'valid_symbols' not in globals():
+                valid_symbols = [s for s in symbols if resolve_pair(s)]
+                print(Fore.GREEN + f"✅ Using {len(valid_symbols)} valid Kraken symbols out of {len(symbols)} total.")
+
+            # =======================
+            # Main scanning loop
+            # =======================
+            for symbol in valid_symbols:
                 try:
+                    start = time.time()
+            
+                    # --- Fetch OHLC ---
                     df = fetch_ohlc(symbol)
                     if df is None or len(df) < bollinger_length:
                         continue
-
+            
                     df = calculate_bollinger(df)
                     last_closed = df.iloc[-2]
-
+            
+                    # --- Prevent duplicate scans ---
                     if last_scanned[symbol] == last_closed['time']:
                         continue
                     last_scanned[symbol] = last_closed['time']
-
+            
                     print(Fore.CYAN + f"[{symbol}] Scanning {last_closed['time']} | "
                                       f"Close={last_closed['close']:.4f}, Lower={last_closed['lower']:.4f}")
-
-                    # Skip if already long on Kraken or holding spot
+            
+                    # --- Skip if already long or holding spot ---
                     already_long = is_already_long_on_kraken(symbol, open_positions)
                     spot_amount = float(balances.get(symbol.replace("USD", ""), 0))
                     if already_long or spot_amount > 0:
                         print(Fore.YELLOW + f"⚠️ Already long {symbol} on Kraken — skipping entry")
                         continue
 
-                    # Entry check
+                    # --- Entry signal ---
                     scan_for_entry(symbol, last_closed)
 
-                    # Close positions if price > mean
+                    # --- Exit signal ---
                     for pos in positions[symbol][:]:
-                        # Only manage bot-initiated positions
                         if not pos.get("bot_initiated", False):
                             continue
-                    
+
                         if pos['side'].lower() == "buy" and last_closed['close'] > last_closed['mean']:
                             close_position(symbol, pos)
                         elif pos['side'].lower() == "sell" and last_closed['close'] < last_closed['mean']:
                             close_position(symbol, pos)
 
+                    # --- Rate limiting ---
+                    elapsed = time.time() - start
+                    sleep_time = max(0, 0.2 - elapsed)
+                    if sleep_time > 0:
+                        time.sleep(sleep_time)
 
                 except Exception as e:
                     print(Fore.RED + f"[{symbol}] Skipping symbol due to error: {e}")
