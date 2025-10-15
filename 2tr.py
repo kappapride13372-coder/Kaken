@@ -331,7 +331,7 @@ def open_position(symbol, side, volume, leverage_type):
         "type": leverage_type,
         "stop_loss_txid": stop_loss_txid,
         "timestamp": time.time(),
-        "userref": BOT_USERREF
+        "userref": BOT_USERREF,
         "bot_initiated": True 
     }
     positions[symbol].append(pos)
