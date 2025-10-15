@@ -23,6 +23,7 @@ BOT_USERREF = 999001  # pick any unique number, keep it the same across runs
 trade_log_file = "trades_log.csv"
 positions_file = "positions.json"
 PAIR_CACHE_FILE = "kraken_pairs.json"
+last_processed = {}
 
 # =======================
 # Strategy parameters
@@ -330,7 +331,8 @@ def open_position(symbol, side, volume, leverage_type):
         "type": leverage_type,
         "stop_loss_txid": stop_loss_txid,
         "timestamp": time.time(),
-        "userref": BOT_USERREF 
+        "userref": BOT_USERREF
+        "bot_initiated": True 
     }
     positions[symbol].append(pos)
     save_positions()
@@ -543,20 +545,17 @@ def flag_all_open_positions_as_bot_initiated():
 if __name__ == "__main__":
     print(Fore.CYAN + "🚀 Kraken Bot starting up...")
 
-    # 1️⃣ Load previous positions from JSON
+    # Load previous state
     load_positions()
-
-    # 2️⃣ Sync currently open positions from Kraken
     sync_positions_from_kraken()
-
-    # 3️⃣ Mark all currently open positions as bot-initiated
     flag_all_open_positions_as_bot_initiated()
 
     print(Fore.GREEN + "✅ Bot ready. Tracking positions for take-profit and stop-loss.")
-  
+
     last_portfolio_update = 0
     portfolio_update_interval = 300  # 5 minutes
     initial_scan_done = False
+    last_processed = {}
 
     try:
         while True:
@@ -568,7 +567,7 @@ if __name__ == "__main__":
             # --- Fetch spot balances ---
             balances = get_account_balance()
 
-            # --- Handle spot positions (deduplicated) ---
+            # --- Handle spot positions ---
             for symbol in symbols:
                 base = symbol.replace("USD", "")
                 qty = float(balances.get(base, 0))
@@ -584,7 +583,7 @@ if __name__ == "__main__":
                     positions.setdefault(symbol, [])
                     positions[symbol] = [p for p in positions[symbol] if not p.get("spot", False)]
 
-                    # Add a single clean spot position
+                    # Add a clean spot position
                     positions[symbol].append({
                         "side": "BUY",
                         "entry_price": rounded_price,
@@ -594,56 +593,63 @@ if __name__ == "__main__":
                         "spot": True
                     })
 
-            # --- Scan for entries ---
-            # =======================
-            # Filter valid symbols once at startup
-            # =======================
+            # --- Filter valid symbols once ---
             if 'valid_symbols' not in globals():
                 valid_symbols = [s for s in symbols if resolve_pair(s)]
                 print(Fore.GREEN + f"✅ Using {len(valid_symbols)} valid Kraken symbols out of {len(symbols)} total.")
 
             # =======================
-            # Main scanning loop
+            # 🔁 Main scanning loop
             # =======================
             for symbol in valid_symbols:
                 try:
                     start = time.time()
-            
+
                     # --- Fetch OHLC ---
                     df = fetch_ohlc(symbol)
                     if df is None or len(df) < bollinger_length:
                         continue
-            
+
                     df = calculate_bollinger(df)
-                    last_closed = df.iloc[-2]
-            
-                    # --- Prevent duplicate scans ---
+                    last_closed = df.iloc[-2]  # ✅ last fully closed candle
+
+                    # --- Prevent duplicate scans for entry ---
                     if last_scanned[symbol] == last_closed['time']:
                         continue
                     last_scanned[symbol] = last_closed['time']
-            
+
                     print(Fore.CYAN + f"[{symbol}] Scanning {last_closed['time']} | "
                                       f"Close={last_closed['close']:.4f}, Lower={last_closed['lower']:.4f}")
-            
-                    # --- Skip if already long or holding spot ---
+
+                    # ==============================
+                    # ✅ EXIT LOGIC (PATCHED)
+                    # ==============================
+                    if last_processed.get(symbol) != last_closed['time']:
+                        last_processed[symbol] = last_closed['time']
+
+                        for pos in positions.get(symbol, [])[:]:
+                            if not pos.get("bot_initiated", False):
+                                continue
+
+                            # Long exit: last bar close >= mean band
+                            if pos['side'].lower() == "buy" and last_closed['close'] >= last_closed['mean']:
+                                print(Fore.RED + f"📉 EXIT LONG {symbol} | close={last_closed['close']:.4f} mean={last_closed['mean']:.4f}")
+                                close_position(symbol, pos)
+
+                            # Short exit: last bar close <= mean band
+                            elif pos['side'].lower() == "sell" and last_closed['close'] <= last_closed['mean']:
+                                print(Fore.GREEN + f"📈 EXIT SHORT {symbol} | close={last_closed['close']:.4f} mean={last_closed['mean']:.4f}")
+                                close_position(symbol, pos)
+
+                    # --- Skip entry if already long or spot ---
                     already_long = is_already_long_on_kraken(symbol, open_positions)
                     spot_amount = float(balances.get(symbol.replace("USD", ""), 0))
                     if already_long or spot_amount > 0:
                         print(Fore.YELLOW + f"⚠️ Already long {symbol} on Kraken — skipping entry")
                         continue
 
-                    # --- Entry signal ---
+                    # --- ENTRY LOGIC ---
                     scan_for_entry(symbol, last_closed)
-
-                    # --- Exit signal ---
-                    for pos in positions[symbol][:]:
-                        if not pos.get("bot_initiated", False):
-                            continue
-
-                        if pos['side'].lower() == "buy" and last_closed['close'] > last_closed['mean']:
-                            close_position(symbol, pos)
-                        elif pos['side'].lower() == "sell" and last_closed['close'] < last_closed['mean']:
-                            close_position(symbol, pos)
 
                     # --- Rate limiting ---
                     elapsed = time.time() - start
@@ -654,7 +660,9 @@ if __name__ == "__main__":
                 except Exception as e:
                     print(Fore.RED + f"[{symbol}] Skipping symbol due to error: {e}")
 
-            # --- Portfolio update ---
+            # =======================
+            # 📊 Portfolio Update
+            # =======================
             if now - last_portfolio_update >= portfolio_update_interval or not initial_scan_done:
                 last_portfolio_update = now
                 initial_scan_done = True
@@ -673,7 +681,7 @@ if __name__ == "__main__":
                     if not pos_list:
                         continue
 
-                    # --- Deduplicate positions ---
+                    # Deduplicate
                     seen_positions = set()
                     clean_list = []
                     for pos in pos_list:
@@ -689,7 +697,7 @@ if __name__ == "__main__":
                         clean_list.append(pos)
                     positions[sym] = clean_list
 
-                    # --- Print positions ---
+                    # Print positions
                     for pos in clean_list:
                         current_price = get_current_price(sym)
                         if current_price is None:
@@ -714,7 +722,7 @@ if __name__ == "__main__":
                               f"Margin: ${margin:.2f} | Lvg: {pos['leverage']}x | "
                               f"PnL: {format_pnl(unrealized)}")
 
-                # --- Print portfolio summary ---
+                # Summary
                 total_equity = get_total_equity_usd()
                 print(Fore.LIGHTBLUE_EX +
                       f"\n💰 Cash: ${cash_usd:.2f} | "
@@ -723,7 +731,9 @@ if __name__ == "__main__":
                       f"Total Unrealized PnL: {format_pnl(total_unrealized)} | "
                       f"Total Equity: ${total_equity:.2f}\n")
 
-            # --- Countdown to next 4H candle ---
+            # =======================
+            # ⏳ Countdown
+            # =======================
             now_utc = datetime.now(timezone.utc)
             hours = now_utc.hour % 4
             minutes = now_utc.minute
