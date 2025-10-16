@@ -256,7 +256,7 @@ def close_position(symbol, pos):
         # Spot position
         if pos.get("spot", False):
             volume = pos["volume"]
-            volume_to_sell = round(volume * 0.9999, 8)
+            volume_to_sell = round(volume * 1, 8)
 
             print(Fore.CYAN + f"🪙 Selling spot position {symbol} | volume={volume_to_sell:.8f}")
             order_resp = place_market_order(symbol, "sell", volume_to_sell, "spot")
@@ -279,7 +279,7 @@ def close_position(symbol, pos):
                 return False
 
             # Cancel stop-loss first
-             if pos.get("stop_loss_txid"):
+            if pos.get("stop_loss_txid"):
                 canceled = cancel_stop_loss_orders(symbol)
                 if str(pos.get("stop_loss_txid")) in [str(txid) for txid in canceled]:
                     print(Fore.YELLOW + f"🗑 Stop-loss canceled before closing {symbol}")
