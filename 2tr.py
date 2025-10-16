@@ -248,33 +248,133 @@ def sync_stop_loss_txids():
     save_positions()
 
 def close_position(symbol, pos):
-    """Close a given position after a candle-close exit signal."""
     try:
-        order_side = "sell" if pos['side'].lower() == "buy" else "buy"
-        order_type = pos.get('type', 'market')
-        volume = pos['volume']
+        # 🪙 Spot position handling
+        if pos.get("spot", False):
+            volume = pos["volume"]
+            print(Fore.CYAN + f"🪙 Selling spot position {symbol} | volume={volume}")
 
-        print(Fore.MAGENTA + f"🛑 Closing {symbol} | side={pos['side']} -> {order_side} | vol={volume}")
+            # Place a MARKET SELL order (quote: USD)
+            order_resp = place_market_order(symbol, "sell", volume, "market")
 
-        result = place_market_order(symbol, order_side, volume, order_type)
+            if order_resp:
+                print(Fore.GREEN + f"✅ Spot sell order placed for {symbol} ({volume})")
+                # Remove from positions after successful sell
+                positions[symbol] = [p for p in positions[symbol] if p is not pos]
+                if not positions[symbol]:
+                    del positions[symbol]
+                save_positions()
+                return True
+            else:
+                print(Fore.RED + f"❌ Failed to place spot sell order for {symbol}")
+                return False
 
-        if not result:
-            print(Fore.RED + f"❌ Order failed for {symbol} | could not exit position")
-            return False
+        # 🧾 Normal margin/futures close
+        else:
+            txid = pos.get("txid")
+            if not txid:
+                print(Fore.RED + f"❌ No txid for position on {symbol}")
+                return False
 
-        # Remove from local storage
-        try:
-            positions[symbol].remove(pos)
-            save_positions()
-            print(Fore.MAGENTA + f"💾 Position removed from memory for {symbol}")
-        except ValueError:
-            print(Fore.YELLOW + f"⚠️ Position not found in local list for {symbol} (possibly already removed)")
+            side = pos["side"]
+            opposite = "sell" if side == "buy" else "buy"
+            volume = pos["volume"]
 
-        return True
+            print(Fore.BLUE + f"🔸 Closing {side.upper()} position on {symbol} ({volume})")
+            order_resp = place_market_order(symbol, opposite, volume, "market")
+
+            if order_resp:
+                print(Fore.GREEN + f"✅ Position closed for {symbol}")
+                positions[symbol] = [p for p in positions[symbol] if p is not pos]
+                if not positions[symbol]:
+                    del positions[symbol]
+                save_positions()
+                return True
+            else:
+                print(Fore.RED + f"❌ Failed to close position for {symbol}")
+                return False
 
     except Exception as e:
-        print(Fore.RED + f"💥 Exception during close_position({symbol}): {e}")
+        print(Fore.RED + f"⚠️ Error in close_position for {symbol}: {e}")
         return False
+# Map asset tickers to tradable symbols for spot
+def sync_positions_from_kraken():
+    # ======================================
+    # 🔹 STEP 1: Sync margin/futures positions
+    # ======================================
+    resp = kraken_private_request("OpenPositions", {})
+    if resp.get("error"):
+        print(Fore.RED + f"Failed to sync positions: {resp['error']}")
+    else:
+        result = resp.get("result", {})
+        for txid, pos in result.items():
+            pair = pos['pair']
+            symbol = resolve_symbol_from_pair(pair)
+            if not symbol:
+                symbol = pair  # fallback
+                print(Fore.YELLOW + f"⚠️ Unrecognized pair {pair}, using raw name as symbol")
+
+            volume = float(pos['vol'])
+            entry_price = float(pos['cost']) / volume if volume > 0 else 0
+            leverage = float(pos.get('leverage', '1').replace(':1', ''))
+            userref = int(pos.get('userref', 0))
+            side = pos['type']
+
+            # check if already in positions
+            exists = any(p.get("txid") == txid for p in positions.get(symbol, []))
+            if exists:
+                continue
+
+            positions.setdefault(symbol, []).append({
+                "txid": txid,
+                "side": side,
+                "entry_price": entry_price,
+                "volume": volume,
+                "exposure": float(pos['cost']),
+                "leverage": leverage,
+                "bot_initiated": (userref == BOT_USERREF),
+                "userref": userref,
+                "spot": False
+            })
+
+    # ======================================
+    # 🔹 STEP 2: Sync spot balances as pseudo-positions
+    # ======================================
+    bal_resp = kraken_private_request("Balance", {})
+    if bal_resp.get("error"):
+        print(Fore.RED + f"Failed to fetch balances: {bal_resp['error']}")
+    else:
+        balances = bal_resp.get("result", {})
+        for asset, amount_str in balances.items():
+            amount = float(amount_str)
+            if amount <= 0:
+                continue
+
+            # find matching symbol
+            symbol = ASSET_SYMBOL_MAP.get(asset)
+            if not symbol:
+                continue  # skip unsupported assets
+
+            # check if already tracked
+            spot_exists = any(p.get("spot", False) for p in positions.get(symbol, []))
+            if spot_exists:
+                continue
+
+            # fetch current price for exposure
+            price = get_current_price(symbol) or 0
+            exposure = amount * price
+
+            positions.setdefault(symbol, []).append({
+                "side": "buy",
+                "entry_price": price,
+                "volume": amount,
+                "exposure": exposure,
+                "leverage": 1.0,
+                "bot_initiated": False,  # or True if you want the bot to auto-manage
+                "spot": True
+            })
+
+    save_positions()
 
 # =======================
 # Orders & positions
@@ -648,27 +748,29 @@ if __name__ == "__main__":
                                       f"Close={last_closed['close']:.4f}, Lower={last_closed['lower']:.4f}")
 
 
+
                     # ==============================
-                    # ✅ EXIT LOGIC (PATCHED)
+                    # EXIT LOGIC (with spot handling)
                     # ==============================
                     if last_processed.get(symbol) != last_closed['time']:
                         last_processed[symbol] = last_closed['time']
-                    
+                        
                         for pos in positions.get(symbol, [])[:]:
-                            if not pos.get("bot_initiated", False):
+                            # Only process positions the bot manages or spot positions
+                            if not pos.get("bot_initiated", False) and not pos.get("spot", False):
                                 continue
                     
                             print(Fore.BLUE + f"[EXIT CHECK] {symbol} | side={pos['side']} | last_close={last_closed['close']:.4f} | mean={last_closed['mean']:.4f}")
                     
-                            # 🟥 LONG EXIT: when candle close >= mean band
+                            # LONG EXIT: close if close >= mean
                             if pos['side'].lower() == "buy" and last_closed['close'] >= last_closed['mean']:
                                 print(Fore.RED + f"📉 EXIT LONG {symbol} | close={last_closed['close']:.4f} ≥ mean={last_closed['mean']:.4f}")
                                 if close_position(symbol, pos):
-                                    print(Fore.RED + f"✅ LONG closed successfully for {symbol}")
+                                    print(Fore.RED + f"✅ LONG/Spot closed successfully for {symbol}")
                                 else:
-                                    print(Fore.RED + f"❌ Failed to close LONG for {symbol}")
+                                    print(Fore.RED + f"❌ Failed to close LONG/Spot for {symbol}")
                     
-                            # 🟩 SHORT EXIT: when candle close <= mean band
+                            # SHORT EXIT: close if close <= mean
                             elif pos['side'].lower() == "sell" and last_closed['close'] <= last_closed['mean']:
                                 print(Fore.GREEN + f"📈 EXIT SHORT {symbol} | close={last_closed['close']:.4f} ≤ mean={last_closed['mean']:.4f}")
                                 if close_position(symbol, pos):
