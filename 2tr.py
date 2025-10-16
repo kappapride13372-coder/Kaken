@@ -279,9 +279,9 @@ def close_position(symbol, pos):
                 return False
 
             # Cancel stop-loss first
-            if pos.get("stop_loss_txid"):
+             if pos.get("stop_loss_txid"):
                 canceled = cancel_stop_loss_orders(symbol)
-                if pos.get("stop_loss_txid") in canceled:
+                if str(pos.get("stop_loss_txid")) in [str(txid) for txid in canceled]:
                     print(Fore.YELLOW + f"🗑 Stop-loss canceled before closing {symbol}")
                 else:
                     print(Fore.RED + f"⚠️ Failed to cancel stop-loss {pos.get('stop_loss_txid')} for {symbol}")
@@ -500,6 +500,10 @@ def get_open_orders():
     return resp.get("result", {}).get("open", {})
 
 def cancel_stop_loss_orders(symbol):
+    """
+    Cancel any stop-loss orders for a specific symbol.
+    Returns a list of canceled TXIDs.
+    """
     open_orders = get_open_orders()
     pair = resolve_pair(symbol)
     canceled_orders = []
@@ -508,10 +512,10 @@ def cancel_stop_loss_orders(symbol):
         if order.get("descr", {}).get("pair") == pair and order.get("descr", {}).get("ordertype") == "stop-loss":
             resp = kraken_private_request("CancelOrder", {"txid": oid})
             if resp.get("error"):
-                print(Fore.RED + f"Failed to cancel stop-loss {oid} for {symbol}: {resp['error']}")
+                print(Fore.RED + f"❌ Failed to cancel stop-loss {oid} for {symbol}: {resp['error']}")
             else:
                 print(Fore.YELLOW + f"🗑 Canceled stop-loss {oid} for {symbol}")
-                canceled_orders.append(oid)
+                canceled_orders.append(oid)  # ensure we capture string TXID exactly
     return canceled_orders
 
 # =======================
