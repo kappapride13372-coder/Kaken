@@ -248,25 +248,21 @@ def sync_stop_loss_txids():
     save_positions()
 
 def close_position(symbol, pos):
+    """
+    Close a position (margin or spot) if exit conditions are met.
+    Spot positions are only sold when the USD pair exit condition is triggered.
+    """
     try:
-        # 🪙 Spot position handling
+        # Spot position
         if pos.get("spot", False):
-            # Use actual Kraken balance
-            base_asset = symbol.replace("USD", "")
-            balances = kraken_private_request("Balance")["result"]
-            available_qty = float(balances.get(base_asset, 0))
-            if available_qty <= 0:
-                print(Fore.RED + f"❌ No {base_asset} available to sell")
-                return False
+            volume = pos["volume"]
 
-            # Sell only the smaller of tracked position or available balance
-            volume_to_sell = min(pos["volume"], available_qty)
-            volume_to_sell = round(volume_to_sell, 8)
+            # Sell slightly less to avoid Kraken rounding/fee issues
+            volume_to_sell = round(volume * 0.9999, 8)
 
-            print(Fore.CYAN + f"🪙 Selling spot position {symbol} | volume={volume_to_sell}")
+            print(Fore.CYAN + f"🪙 Selling spot position {symbol} | volume={volume_to_sell:.8f}")
 
             order_resp = place_market_order(symbol, "sell", volume_to_sell, "spot")
-
             if order_resp:
                 print(Fore.GREEN + f"✅ Spot sell order placed for {symbol} ({volume_to_sell})")
                 # Remove from positions after successful sell
@@ -279,7 +275,7 @@ def close_position(symbol, pos):
                 print(Fore.RED + f"❌ Failed to place spot sell order for {symbol}")
                 return False
 
-        # 🧾 Normal margin/futures close
+        # Margin/futures position
         else:
             txid = pos.get("txid")
             if not txid:
@@ -291,7 +287,7 @@ def close_position(symbol, pos):
             volume = pos["volume"]
 
             print(Fore.BLUE + f"🔸 Closing {side.upper()} position on {symbol} ({volume})")
-            order_resp = place_market_order(symbol, opposite, volume, "margin")
+            order_resp = place_market_order(symbol, opposite, volume, "market")
 
             if order_resp:
                 print(Fore.GREEN + f"✅ Position closed for {symbol}")
@@ -307,6 +303,7 @@ def close_position(symbol, pos):
     except Exception as e:
         print(Fore.RED + f"⚠️ Error in close_position for {symbol}: {e}")
         return False
+
 # Map asset tickers to tradable symbols for spot
 def sync_positions_from_kraken():
     # ======================================
