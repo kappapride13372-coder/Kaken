@@ -249,17 +249,16 @@ def sync_stop_loss_txids():
 
 def close_position(symbol, pos):
     try:
-        # 🪙 Spot position handling
+        # Spot handling
         if pos.get("spot", False):
             volume = pos["volume"]
             print(Fore.CYAN + f"🪙 Selling spot position {symbol} | volume={volume}")
 
-            # Place a MARKET SELL order (quote: USD)
-            order_resp = place_market_order(symbol, "sell", volume, "market")
+            # Use explicit spot order
+            order_resp = place_market_order(symbol, "sell", volume, desired_order_type="spot")
 
             if order_resp:
                 print(Fore.GREEN + f"✅ Spot sell order placed for {symbol} ({volume})")
-                # Remove from positions after successful sell
                 positions[symbol] = [p for p in positions[symbol] if p is not pos]
                 if not positions[symbol]:
                     del positions[symbol]
@@ -268,6 +267,10 @@ def close_position(symbol, pos):
             else:
                 print(Fore.RED + f"❌ Failed to place spot sell order for {symbol}")
                 return False
+
+        # Margin/futures handling remains unchanged
+        else:
+            ...
 
         # 🧾 Normal margin/futures close
         else:
@@ -380,12 +383,22 @@ def sync_positions_from_kraken():
 # Orders & positions
 # =======================
 def place_market_order(symbol, side, volume, desired_order_type="margin"):
+    """
+    Places a market order on Kraken.
+    - symbol: e.g., "ARPAUSD"
+    - side: "buy" or "sell"
+    - volume: float
+    - desired_order_type: "margin" or "spot" (auto-handled if None)
+    """
+
     if volume <= 0:
         print(Fore.RED + f"Invalid volume for {symbol}")
         return None
 
+    # Determine pair
     pair = resolve_pair(symbol)
     if not pair:
+        print(Fore.RED + f"Cannot resolve pair for {symbol}")
         return None
 
     data = {
@@ -396,23 +409,27 @@ def place_market_order(symbol, side, volume, desired_order_type="margin"):
         "userref": BOT_USERREF
     }
 
+    # Handle order type
     if desired_order_type == "margin":
         data["leverage"] = "2:1"
+    elif desired_order_type == "spot":
+        data.pop("leverage", None)  # Remove leverage for spot
 
     resp = kraken_private_request("AddOrder", data)
+
+    # Retry once with spot if margin failed
+    if resp.get("error") and desired_order_type == "margin":
+        print(Fore.YELLOW + f"Margin order failed for {symbol}: {resp['error']}. Trying spot order...")
+        data.pop("leverage", None)
+        resp = kraken_private_request("AddOrder", data)
+
     if resp.get("error"):
-        if desired_order_type == "margin":
-            print(Fore.YELLOW + f"Margin order failed for {symbol}: {resp['error']}. Trying spot order...")
-            data.pop("leverage")
-            resp = kraken_private_request("AddOrder", data)
-        if resp.get("error"):
-            print(Fore.RED + f"Order failed for {symbol}: {resp['error']}")
-            return None
+        print(Fore.RED + f"❌ Order failed for {symbol}: {resp['error']}")
+        return None
 
     txid = resp['result']['txid'][0]
     price = get_current_price(symbol)
-    print(Fore.GREEN + f"✅ {side.upper()} order placed {symbol} @ {price:.4f} | TXID {txid}")
-
+    print(Fore.GREEN + f"✅ {side.upper()} order placed for {symbol} @ {price:.4f} | TXID {txid}")
     return volume, price, desired_order_type
 
 def place_stop_loss(symbol, entry_price, side, volume, stop_loss_pct=0.4):
