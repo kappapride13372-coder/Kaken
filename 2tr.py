@@ -232,41 +232,37 @@ def scan_for_entry(symbol, last_closed):
             open_position(symbol, "buy", vol, lvg_type)
 
 def sync_stop_loss_txids():
-    """Match open stop-loss orders from Kraken to positions."""
+    """
+    Match open stop-loss orders from Kraken to positions.
+    Ensures each bot-managed position has the correct stop-loss TXID.
+    """
     open_orders = get_open_orders()
     for symbol, pos_list in positions.items():
         for pos in pos_list:
             if pos.get("stop_loss_txid"):
-                continue  # already tracked
-            # Find a stop-loss for this symbol and volume
+                continue  # Already tracked
+
             for oid, order in open_orders.items():
                 if (order.get("descr", {}).get("pair") == resolve_pair(symbol) and
                     order.get("descr", {}).get("ordertype") == "stop-loss" and
-                    float(order.get("vol", 0)) == pos["volume"]):
+                    abs(float(order.get("vol", 0)) - pos["volume"]) < 1e-8):
                     pos["stop_loss_txid"] = oid
+                    print(Fore.YELLOW + f"🔗 Linked stop-loss {oid} to {symbol} position")
                     break
     save_positions()
 
 def close_position(symbol, pos):
-    """
-    Close a position (margin or spot) if exit conditions are met.
-    Spot positions are only sold when the USD pair exit condition is triggered.
-    """
     try:
         # Spot position
         if pos.get("spot", False):
             volume = pos["volume"]
-
-            # Sell slightly less to avoid Kraken rounding/fee issues
             volume_to_sell = round(volume * 0.9999, 8)
 
             print(Fore.CYAN + f"🪙 Selling spot position {symbol} | volume={volume_to_sell:.8f}")
-
             order_resp = place_market_order(symbol, "sell", volume_to_sell, "spot")
             if order_resp:
                 print(Fore.GREEN + f"✅ Spot sell order placed for {symbol} ({volume_to_sell})")
-                # Remove from positions after successful sell
-                positions[symbol] = [p for p in positions[symbol] if p is not pos]
+                positions[symbol] = [p for p in positions[symbol] if not p is pos]
                 if not positions[symbol]:
                     del positions[symbol]
                 save_positions()
@@ -282,6 +278,14 @@ def close_position(symbol, pos):
                 print(Fore.RED + f"❌ No txid for position on {symbol}")
                 return False
 
+            # Cancel stop-loss first
+            if pos.get("stop_loss_txid"):
+                canceled = cancel_stop_loss_orders(symbol)
+                if pos.get("stop_loss_txid") in canceled:
+                    print(Fore.YELLOW + f"🗑 Stop-loss canceled before closing {symbol}")
+                else:
+                    print(Fore.RED + f"⚠️ Failed to cancel stop-loss {pos.get('stop_loss_txid')} for {symbol}")
+
             side = pos["side"]
             opposite = "sell" if side == "buy" else "buy"
             volume = pos["volume"]
@@ -291,7 +295,7 @@ def close_position(symbol, pos):
 
             if order_resp:
                 print(Fore.GREEN + f"✅ Position closed for {symbol}")
-                positions[symbol] = [p for p in positions[symbol] if p is not pos]
+                positions[symbol] = [p for p in positions[symbol] if not p is pos]
                 if not positions[symbol]:
                     del positions[symbol]
                 save_positions()
@@ -459,12 +463,14 @@ def open_position(symbol, side, volume, leverage_type):
     if not price:
         return
 
-    # Exposure & margin
     exposure = volume * price
     leverage = 2 if leverage_type == "margin" else 1
     margin = exposure / leverage
 
-    # Place stop-loss and save txid
+    # Cancel any existing stop-loss for safety before placing a new one
+    cancel_stop_loss_orders(symbol)
+
+    # Place stop-loss and track TXID
     stop_loss_txid = place_stop_loss(symbol, price, side, volume, stop_loss_pct)
 
     pos = {
@@ -475,10 +481,10 @@ def open_position(symbol, side, volume, leverage_type):
         "margin": margin,
         "leverage": leverage,
         "type": leverage_type,
-        "stop_loss_txid": stop_loss_txid,
+        "stop_loss_txid": stop_loss_txid,  # track specific stop-loss
         "timestamp": time.time(),
         "userref": BOT_USERREF,
-        "bot_initiated": True 
+        "bot_initiated": True
     }
     positions[symbol].append(pos)
     save_positions()
