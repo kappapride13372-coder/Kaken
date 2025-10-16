@@ -268,10 +268,6 @@ def close_position(symbol, pos):
                 print(Fore.RED + f"❌ Failed to place spot sell order for {symbol}")
                 return False
 
-        # Margin/futures handling remains unchanged
-        else:
-            ...
-
         # 🧾 Normal margin/futures close
         else:
             txid = pos.get("txid")
