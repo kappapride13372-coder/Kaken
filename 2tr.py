@@ -252,17 +252,27 @@ def sync_stop_loss_txids():
     save_positions()
 
 def close_position(symbol, pos):
+    """
+    Close a position (spot or margin/futures) safely.
+    All open orders for the symbol are canceled first to avoid blocking the sell.
+    """
     try:
         # Spot position
         if pos.get("spot", False):
             volume = pos["volume"]
-            volume_to_sell = round(volume * 1, 8)
+            volume_to_sell = round(volume * 0.9999, 8)
 
             print(Fore.CYAN + f"🪙 Selling spot position {symbol} | volume={volume_to_sell:.8f}")
+
+            # Cancel any open orders before selling
+            canceled = cancel_all_orders_for_symbol(symbol)
+            if canceled:
+                print(Fore.YELLOW + f"🗑 Canceled {len(canceled)} orders before selling spot {symbol}")
+
             order_resp = place_market_order(symbol, "sell", volume_to_sell, "spot")
             if order_resp:
                 print(Fore.GREEN + f"✅ Spot sell order placed for {symbol} ({volume_to_sell})")
-                positions[symbol] = [p for p in positions[symbol] if not p is pos]
+                positions[symbol] = [p for p in positions[symbol] if p is not pos]
                 if not positions[symbol]:
                     del positions[symbol]
                 save_positions()
@@ -278,16 +288,13 @@ def close_position(symbol, pos):
                 print(Fore.RED + f"❌ No txid for position on {symbol}")
                 return False
 
-            # Cancel stop-loss first
-            if pos.get("stop_loss_txid"):
-                canceled = cancel_stop_loss_orders(symbol)
-                if str(pos.get("stop_loss_txid")) in [str(txid) for txid in canceled]:
-                    print(Fore.YELLOW + f"🗑 Stop-loss canceled before closing {symbol}")
-                else:
-                    print(Fore.RED + f"⚠️ Failed to cancel stop-loss {pos.get('stop_loss_txid')} for {symbol}")
+            # Cancel all orders first
+            canceled = cancel_all_orders_for_symbol(symbol)
+            if canceled:
+                print(Fore.YELLOW + f"🗑 Canceled {len(canceled)} orders before closing {symbol}")
 
             side = pos["side"]
-            opposite = "sell" if side == "buy" else "buy"
+            opposite = "sell" if side.lower() == "buy" else "buy"
             volume = pos["volume"]
 
             print(Fore.BLUE + f"🔸 Closing {side.upper()} position on {symbol} ({volume})")
@@ -295,7 +302,7 @@ def close_position(symbol, pos):
 
             if order_resp:
                 print(Fore.GREEN + f"✅ Position closed for {symbol}")
-                positions[symbol] = [p for p in positions[symbol] if not p is pos]
+                positions[symbol] = [p for p in positions[symbol] if p is not pos]
                 if not positions[symbol]:
                     del positions[symbol]
                 save_positions()
@@ -307,6 +314,26 @@ def close_position(symbol, pos):
     except Exception as e:
         print(Fore.RED + f"⚠️ Error in close_position for {symbol}: {e}")
         return False
+
+def cancel_all_orders_for_symbol(symbol):
+    """
+    Cancel all open orders for a given symbol.
+    Returns a list of all canceled TXIDs.
+    """
+    open_orders = get_open_orders()
+    pair = resolve_pair(symbol)
+    canceled_orders = []
+
+    for oid, order in open_orders.items():
+        if order.get("descr", {}).get("pair") == pair:
+            resp = kraken_private_request("CancelOrder", {"txid": oid})
+            if resp.get("error"):
+                print(Fore.RED + f"❌ Failed to cancel order {oid} for {symbol}: {resp['error']}")
+            else:
+                print(Fore.YELLOW + f"🗑 Canceled order {oid} for {symbol}")
+                canceled_orders.append(oid)
+
+    return canceled_orders
 
 # Map asset tickers to tradable symbols for spot
 def sync_positions_from_kraken():
