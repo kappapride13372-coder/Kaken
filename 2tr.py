@@ -248,20 +248,33 @@ def sync_stop_loss_txids():
     save_positions()
 
 def close_position(symbol, pos):
-    """Close position and cancel its stop-loss before exiting."""
-    # Cancel stop-loss if exists
-    if pos.get("stop_loss_txid"):
-        resp = kraken_private_request("CancelOrder", {"txid": pos["stop_loss_txid"]})
-        if resp.get("error"):
-            print(Fore.RED + f"Failed to cancel stop-loss {pos['stop_loss_txid']} for {symbol}: {resp['error']}")
-        else:
-            print(Fore.YELLOW + f"🗑 Canceled stop-loss {pos['stop_loss_txid']} for {symbol}")
+    """Close a given position after a candle-close exit signal."""
+    try:
+        order_side = "sell" if pos['side'].lower() == "buy" else "buy"
+        order_type = pos.get('type', 'market')
+        volume = pos['volume']
 
-    # Place market order to exit
-    place_market_order(symbol, "sell", pos['volume'], pos['type'])
-    positions[symbol].remove(pos)
-    save_positions()
-    print(Fore.YELLOW + f"❌ Position closed {symbol}")
+        print(Fore.MAGENTA + f"🛑 Closing {symbol} | side={pos['side']} -> {order_side} | vol={volume}")
+
+        result = place_market_order(symbol, order_side, volume, order_type)
+
+        if not result:
+            print(Fore.RED + f"❌ Order failed for {symbol} | could not exit position")
+            return False
+
+        # Remove from local storage
+        try:
+            positions[symbol].remove(pos)
+            save_positions()
+            print(Fore.MAGENTA + f"💾 Position removed from memory for {symbol}")
+        except ValueError:
+            print(Fore.YELLOW + f"⚠️ Position not found in local list for {symbol} (possibly already removed)")
+
+        return True
+
+    except Exception as e:
+        print(Fore.RED + f"💥 Exception during close_position({symbol}): {e}")
+        return False
 
 # =======================
 # Orders & positions
@@ -635,22 +648,31 @@ if __name__ == "__main__":
                     # ==============================
                     # ✅ EXIT LOGIC (PATCHED)
                     # ==============================
+
                     if last_processed.get(symbol) != last_closed['time']:
                         last_processed[symbol] = last_closed['time']
-
+                    
                         for pos in positions.get(symbol, [])[:]:
                             if not pos.get("bot_initiated", False):
                                 continue
-
-                            # Long exit: last bar close >= mean band
+                    
+                            print(Fore.BLUE + f"[EXIT CHECK] {symbol} | side={pos['side']} | last_close={last_closed['close']:.4f} | mean={last_closed['mean']:.4f}")
+                    
+                            # 🟥 LONG EXIT: when candle close >= mean band
                             if pos['side'].lower() == "buy" and last_closed['close'] >= last_closed['mean']:
-                                print(Fore.RED + f"📉 EXIT LONG {symbol} | close={last_closed['close']:.4f} mean={last_closed['mean']:.4f}")
-                                close_position(symbol, pos)
+                                print(Fore.RED + f"📉 EXIT LONG {symbol} | close={last_closed['close']:.4f} ≥ mean={last_closed['mean']:.4f}")
+                                if close_position(symbol, pos):
+                                    print(Fore.RED + f"✅ LONG closed successfully for {symbol}")
+                                else:
+                                    print(Fore.RED + f"❌ Failed to close LONG for {symbol}")
 
-                            # Short exit: last bar close <= mean band
-                            elif pos['side'].lower() == "sell" and last_closed['close'] <= last_closed['mean']:
-                                print(Fore.GREEN + f"📈 EXIT SHORT {symbol} | close={last_closed['close']:.4f} mean={last_closed['mean']:.4f}")
-                                close_position(symbol, pos)
+        # 🟩 SHORT EXIT: when candle close <= mean band
+        elif pos['side'].lower() == "sell" and last_closed['close'] <= last_closed['mean']:
+            print(Fore.GREEN + f"📈 EXIT SHORT {symbol} | close={last_closed['close']:.4f} ≤ mean={last_closed['mean']:.4f}")
+            if close_position(symbol, pos):
+                print(Fore.GREEN + f"✅ SHORT closed successfully for {symbol}")
+            else:
+                print(Fore.RED + f"❌ Failed to close SHORT for {symbol}")
 
                     # --- Skip entry if already long or spot ---
                     already_long = is_already_long_on_kraken(symbol, open_positions)
