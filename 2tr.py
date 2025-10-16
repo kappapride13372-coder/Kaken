@@ -521,13 +521,15 @@ def sync_positions_from_kraken():
         pair = pos['pair']
         symbol = resolve_symbol_from_pair(pair)
         if not symbol:
-          continue
+            # fallback: use raw pair name as symbol if not in cache
+            symbol = pair
+            print(Fore.YELLOW + f"⚠️ Unrecognized pair {pair}, using raw name as symbol")
+
         volume = float(pos['vol'])
         entry_price = float(pos['cost']) / volume if volume > 0 else 0
         leverage = float(pos.get('leverage', '1').replace(':1', ''))
-
-        # userref may not always be present
         userref = int(pos.get('userref', 0))
+        side = pos['type']
 
         # check if already in positions
         exists = any(p.get("txid") == txid for p in positions.get(symbol, []))
@@ -536,12 +538,12 @@ def sync_positions_from_kraken():
 
         positions.setdefault(symbol, []).append({
             "txid": txid,
-            "side": pos['type'],
+            "side": side,
             "entry_price": entry_price,
             "volume": volume,
             "exposure": float(pos['cost']),
             "leverage": leverage,
-            "bot_initiated": (userref == BOT_USERREF),  # ✅ only tag bot trades
+            "bot_initiated": (userref == BOT_USERREF),
             "userref": userref
         })
     save_positions()
