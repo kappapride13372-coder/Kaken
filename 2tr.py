@@ -645,10 +645,10 @@ if __name__ == "__main__":
                     print(Fore.CYAN + f"[{symbol}] Scanning {last_closed['time']} | "
                                       f"Close={last_closed['close']:.4f}, Lower={last_closed['lower']:.4f}")
 
+
                     # ==============================
                     # ✅ EXIT LOGIC (PATCHED)
                     # ==============================
-
                     if last_processed.get(symbol) != last_closed['time']:
                         last_processed[symbol] = last_closed['time']
                     
@@ -665,21 +665,14 @@ if __name__ == "__main__":
                                     print(Fore.RED + f"✅ LONG closed successfully for {symbol}")
                                 else:
                                     print(Fore.RED + f"❌ Failed to close LONG for {symbol}")
-
-        # 🟩 SHORT EXIT: when candle close <= mean band
-        elif pos['side'].lower() == "sell" and last_closed['close'] <= last_closed['mean']:
-            print(Fore.GREEN + f"📈 EXIT SHORT {symbol} | close={last_closed['close']:.4f} ≤ mean={last_closed['mean']:.4f}")
-            if close_position(symbol, pos):
-                print(Fore.GREEN + f"✅ SHORT closed successfully for {symbol}")
-            else:
-                print(Fore.RED + f"❌ Failed to close SHORT for {symbol}")
-
-                    # --- Skip entry if already long or spot ---
-                    already_long = is_already_long_on_kraken(symbol, open_positions)
-                    spot_amount = float(balances.get(symbol.replace("USD", ""), 0))
-                    if already_long or spot_amount > 0:
-                        print(Fore.YELLOW + f"⚠️ Already long {symbol} on Kraken — skipping entry")
-                        continue
+                    
+                            # 🟩 SHORT EXIT: when candle close <= mean band
+                            elif pos['side'].lower() == "sell" and last_closed['close'] <= last_closed['mean']:
+                                print(Fore.GREEN + f"📈 EXIT SHORT {symbol} | close={last_closed['close']:.4f} ≤ mean={last_closed['mean']:.4f}")
+                                if close_position(symbol, pos):
+                                    print(Fore.GREEN + f"✅ SHORT closed successfully for {symbol}")
+                                else:
+                                    print(Fore.RED + f"❌ Failed to close SHORT for {symbol}")
 
                     # --- ENTRY LOGIC ---
                     scan_for_entry(symbol, last_closed)
