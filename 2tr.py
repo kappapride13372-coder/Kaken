@@ -249,16 +249,27 @@ def sync_stop_loss_txids():
 
 def close_position(symbol, pos):
     try:
-        # Spot handling
+        # 🪙 Spot position handling
         if pos.get("spot", False):
-            volume = pos["volume"]
-            print(Fore.CYAN + f"🪙 Selling spot position {symbol} | volume={volume}")
+            # Use actual Kraken balance
+            base_asset = symbol.replace("USD", "")
+            balances = kraken_private_request("Balance")["result"]
+            available_qty = float(balances.get(base_asset, 0))
+            if available_qty <= 0:
+                print(Fore.RED + f"❌ No {base_asset} available to sell")
+                return False
 
-            # Use explicit spot order
-            order_resp = place_market_order(symbol, "sell", volume, desired_order_type="spot")
+            # Sell only the smaller of tracked position or available balance
+            volume_to_sell = min(pos["volume"], available_qty)
+            volume_to_sell = round(volume_to_sell, 8)
+
+            print(Fore.CYAN + f"🪙 Selling spot position {symbol} | volume={volume_to_sell}")
+
+            order_resp = place_market_order(symbol, "sell", volume_to_sell, "spot")
 
             if order_resp:
-                print(Fore.GREEN + f"✅ Spot sell order placed for {symbol} ({volume})")
+                print(Fore.GREEN + f"✅ Spot sell order placed for {symbol} ({volume_to_sell})")
+                # Remove from positions after successful sell
                 positions[symbol] = [p for p in positions[symbol] if p is not pos]
                 if not positions[symbol]:
                     del positions[symbol]
@@ -280,7 +291,7 @@ def close_position(symbol, pos):
             volume = pos["volume"]
 
             print(Fore.BLUE + f"🔸 Closing {side.upper()} position on {symbol} ({volume})")
-            order_resp = place_market_order(symbol, opposite, volume, "market")
+            order_resp = place_market_order(symbol, opposite, volume, "margin")
 
             if order_resp:
                 print(Fore.GREEN + f"✅ Position closed for {symbol}")
@@ -379,23 +390,25 @@ def sync_positions_from_kraken():
 # Orders & positions
 # =======================
 def place_market_order(symbol, side, volume, desired_order_type="margin"):
-    """
-    Places a market order on Kraken.
-    - symbol: e.g., "ARPAUSD"
-    - side: "buy" or "sell"
-    - volume: float
-    - desired_order_type: "margin" or "spot" (auto-handled if None)
-    """
-
     if volume <= 0:
         print(Fore.RED + f"Invalid volume for {symbol}")
         return None
 
-    # Determine pair
     pair = resolve_pair(symbol)
     if not pair:
-        print(Fore.RED + f"Cannot resolve pair for {symbol}")
+        print(Fore.RED + f"❌ Could not resolve pair for {symbol}")
         return None
+
+    # 🪙 Spot check: if not margin, verify balance
+    if desired_order_type == "spot":
+        base_asset = symbol.replace("USD", "")
+        balances = kraken_private_request("Balance")["result"]
+        available_qty = float(balances.get(base_asset, 0))
+        if available_qty <= 0:
+            print(Fore.RED + f"❌ No {base_asset} available to sell")
+            return None
+        volume = min(volume, available_qty)
+        volume = round(volume, 8)
 
     data = {
         "pair": pair,
@@ -405,27 +418,26 @@ def place_market_order(symbol, side, volume, desired_order_type="margin"):
         "userref": BOT_USERREF
     }
 
-    # Handle order type
     if desired_order_type == "margin":
         data["leverage"] = "2:1"
-    elif desired_order_type == "spot":
-        data.pop("leverage", None)  # Remove leverage for spot
 
     resp = kraken_private_request("AddOrder", data)
 
-    # Retry once with spot if margin failed
-    if resp.get("error") and desired_order_type == "margin":
-        print(Fore.YELLOW + f"Margin order failed for {symbol}: {resp['error']}. Trying spot order...")
-        data.pop("leverage", None)
-        resp = kraken_private_request("AddOrder", data)
-
+    # Retry logic: if margin fails, try spot automatically
     if resp.get("error"):
-        print(Fore.RED + f"❌ Order failed for {symbol}: {resp['error']}")
-        return None
+        if desired_order_type == "margin":
+            print(Fore.YELLOW + f"Margin order failed for {symbol}: {resp['error']}. Trying spot order...")
+            data.pop("leverage")
+            resp = kraken_private_request("AddOrder", data)
+
+        if resp.get("error"):
+            print(Fore.RED + f"Order failed for {symbol}: {resp['error']}")
+            return None
 
     txid = resp['result']['txid'][0]
     price = get_current_price(symbol)
-    print(Fore.GREEN + f"✅ {side.upper()} order placed for {symbol} @ {price:.4f} | TXID {txid}")
+    print(Fore.GREEN + f"✅ {side.upper()} order placed {symbol} @ {price:.4f} | TXID {txid}")
+
     return volume, price, desired_order_type
 
 def place_stop_loss(symbol, entry_price, side, volume, stop_loss_pct=0.4):
@@ -775,21 +787,16 @@ if __name__ == "__main__":
                     
                             print(Fore.BLUE + f"[EXIT CHECK] {symbol} | side={pos['side']} | last_close={last_closed['close']:.4f} | mean={last_closed['mean']:.4f}")
                     
-                            # LONG EXIT: close if close >= mean
+                            
+                            # 🟥 LONG EXIT
                             if pos['side'].lower() == "buy" and last_closed['close'] >= last_closed['mean']:
                                 print(Fore.RED + f"📉 EXIT LONG {symbol} | close={last_closed['close']:.4f} ≥ mean={last_closed['mean']:.4f}")
-                                if close_position(symbol, pos):
-                                    print(Fore.RED + f"✅ LONG/Spot closed successfully for {symbol}")
-                                else:
-                                    print(Fore.RED + f"❌ Failed to close LONG/Spot for {symbol}")
-                    
-                            # SHORT EXIT: close if close <= mean
+                                close_position(symbol, pos)
+                        
+                            # 🟩 SHORT EXIT
                             elif pos['side'].lower() == "sell" and last_closed['close'] <= last_closed['mean']:
                                 print(Fore.GREEN + f"📈 EXIT SHORT {symbol} | close={last_closed['close']:.4f} ≤ mean={last_closed['mean']:.4f}")
-                                if close_position(symbol, pos):
-                                    print(Fore.GREEN + f"✅ SHORT closed successfully for {symbol}")
-                                else:
-                                    print(Fore.RED + f"❌ Failed to close SHORT for {symbol}")
+                                close_position(symbol, pos)
 
                     # --- ENTRY LOGIC ---
                     scan_for_entry(symbol, last_closed)
