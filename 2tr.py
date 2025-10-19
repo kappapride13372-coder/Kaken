@@ -7,6 +7,7 @@ import csv
 import os
 import json
 import requests
+import time, base64, hashlib, hmac, requests
 
 # =======================
 # Initialize
@@ -95,6 +96,28 @@ last_scanned = {s: None for s in symbols}
 # =======================
 # Pair cache handling
 # =======================
+
+
+def kraken_request(uri_path, data=None):
+    if data is None:
+        data = {}
+
+    headers = {"API-Key": API_KEY}
+    data["nonce"] = str(int(time.time() * 1000))
+    postdata = "&".join([f"{k}={v}" for k, v in data.items()])
+
+    message = (data["nonce"] + postdata).encode()
+    sha256 = hashlib.sha256(message).digest()
+    mac = hmac.new(base64.b64decode(API_SECRET), uri_path.encode() + sha256, hashlib.sha512)
+    sigdigest = base64.b64encode(mac.digest())
+    headers["API-Sign"] = sigdigest.decode()
+
+    resp = requests.post(API_URL + uri_path, headers=headers, data=data)
+    resp_json = resp.json()
+    if resp_json.get("error"):
+        raise Exception(f"Kraken API error: {resp_json['error']}")
+    return resp_json["result"]
+
 def startup_sync_positions():
     """
     Load positions from file, sync with Kraken, and add spot balances.
