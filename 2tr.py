@@ -180,27 +180,21 @@ def startup_sync_positions():
     print(Fore.GREEN + "✅ Startup sync complete. Positions are ready.")
 
 def sync_spot_positions_from_kraken():
-    """Fetch spot balances from Kraken and add them as pseudo-positions if not already tracked."""
-    bal_resp = kraken_private_request("Balance", {})
-    if bal_resp.get("error"):
-        print(Fore.RED + f"Failed to fetch balances: {bal_resp['error']}")
-        return
-
-    balances = bal_resp.get("result", {})
+    """Load all positive spot balances from Kraken as pseudo-positions."""
+    balances = kraken_request("/0/private/Balance")
     for asset, amount_str in balances.items():
         amount = float(amount_str)
         if amount <= 0:
             continue
 
-        # Convert asset to symbol automatically
+        # Generate the trading pair symbol automatically
         symbol = asset.replace("X", "").replace("Z", "") + "USD"
 
-        # Avoid duplicate spot positions
+        # Avoid duplicates
         spot_exists = any(p.get("spot", False) for p in positions.get(symbol, []))
         if spot_exists:
             continue
 
-        # Get current price
         price = get_current_price(symbol) or 0
         exposure = amount * price
 
@@ -213,7 +207,7 @@ def sync_spot_positions_from_kraken():
             "bot_initiated": False,
             "spot": True
         })
-        print(Fore.GREEN + f"🔹 Spot position loaded: {symbol} | Qty: {amount} | Price: {price}")
+        print(f"🔹 Spot position loaded: {symbol} | Qty: {amount} | Price: {price}")
 
     save_positions()
 
@@ -889,8 +883,8 @@ if __name__ == "__main__":
 
     # Load previous state
     load_positions()
-    sync_positions_from_kraken()  # sync margin/futures positions
-    sync_spot_positions_from_kraken()  # sync spot balances properly
+    sync_positions_from_kraken()        # margin/futures
+    sync_spot_positions_from_kraken()   # spot balances
     flag_all_open_positions_as_bot_initiated()
 
     print(Fore.GREEN + "✅ Bot ready. Tracking positions for take-profit and stop-loss.")
