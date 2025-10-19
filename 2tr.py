@@ -102,7 +102,7 @@ def kraken_request(uri_path, data=None):
     if data is None:
         data = {}
 
-    headers = {"API-Key": API_KEY}
+    headers = {"API-Key": api_key}
     data["nonce"] = str(int(time.time() * 1000))
     postdata = "&".join([f"{k}={v}" for k, v in data.items()])
 
