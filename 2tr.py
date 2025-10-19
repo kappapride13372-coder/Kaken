@@ -364,32 +364,32 @@ def cancel_all_orders_for_symbol(symbol):
 # Map asset tickers to tradable symbols for spot
 def sync_positions_from_kraken():
     """
-    Sync all open positions from Kraken at startup.
-    This includes margin/futures positions AND spot balances.
-    Spot positions are added as pseudo-positions for tracking.
+    Fetch all open positions from Kraken and populate the `positions` dict.
+    Handles:
+    1. Margin/Futures positions via OpenPositions API
+    2. Spot balances via Balance API as pseudo-positions
     """
-    # -----------------------------
-    # 1️⃣ Sync margin/futures positions
-    # -----------------------------
+    global positions
+
+    # -------------------------
+    # Step 1: Margin/Futures positions
+    # -------------------------
     resp = kraken_private_request("OpenPositions", {})
     if resp.get("error"):
         print(Fore.RED + f"Failed to sync margin/futures positions: {resp['error']}")
     else:
         result = resp.get("result", {})
         for txid, pos in result.items():
-            pair = pos['pair']
-            symbol = resolve_symbol_from_pair(pair)
-            if not symbol:
-                symbol = pair  # fallback
-                print(Fore.YELLOW + f"⚠️ Unrecognized pair {pair}, using raw name as symbol")
+            pair = pos.get('pair')
+            symbol = resolve_symbol_from_pair(pair) or pair  # fallback to raw pair
 
-            volume = float(pos['vol'])
-            entry_price = float(pos['cost']) / volume if volume > 0 else 0
+            volume = float(pos.get('vol', 0))
+            entry_price = float(pos.get('cost', 0)) / volume if volume > 0 else 0
             leverage = float(pos.get('leverage', '1').replace(':1', ''))
             userref = int(pos.get('userref', 0))
-            side = pos['type']
+            side = pos.get('type', 'buy')
 
-            # Skip if already in memory
+            # Avoid duplicates
             exists = any(p.get("txid") == txid for p in positions.get(symbol, []))
             if exists:
                 continue
@@ -399,16 +399,17 @@ def sync_positions_from_kraken():
                 "side": side,
                 "entry_price": entry_price,
                 "volume": volume,
-                "exposure": float(pos['cost']),
+                "exposure": float(pos.get('cost', 0)),
                 "leverage": leverage,
                 "bot_initiated": (userref == BOT_USERREF),
                 "userref": userref,
                 "spot": False
             })
+            print(Fore.GREEN + f"🟢 Margin/Futures position synced: {symbol} | Qty={volume} | Price={entry_price:.4f}")
 
-    # ======================
-    # Sync spot balances
-    # ======================
+    # -------------------------
+    # Step 2: Spot balances
+    # -------------------------
     bal_resp = kraken_private_request("Balance", {})
     if bal_resp.get("error"):
         print(Fore.RED + f"Failed to fetch balances: {bal_resp['error']}")
@@ -418,25 +419,24 @@ def sync_positions_from_kraken():
             amount = float(amount_str)
             if amount <= 0:
                 continue
-    
-            # Convert Kraken asset name to standard symbol
+
+            # Convert Kraken asset name to symbol
             base = asset.replace("X", "").replace("Z", "")
             symbol = base + "USD"
-    
-            # Skip if already tracked
+
+            # Skip if already tracked as spot
             spot_exists = any(p.get("spot", False) for p in positions.get(symbol, []))
             if spot_exists:
                 continue
-    
-            # Fetch current price for exposure calculation
+
+            # Fetch current price
             price = get_current_price(symbol)
             if not price:
                 print(Fore.YELLOW + f"⚠️ Price not available for {symbol}, skipping spot position")
                 continue
-    
+
             exposure = amount * price
-    
-            # Add spot pseudo-position
+
             positions.setdefault(symbol, []).append({
                 "side": "BUY",
                 "entry_price": price,
@@ -449,6 +449,7 @@ def sync_positions_from_kraken():
             print(Fore.GREEN + f"🟢 Spot position synced: {symbol} | Qty={amount} | Price={price:.4f} | Exposure=${exposure:.2f}")
 
     save_positions()
+    print(Fore.CYAN + f"✅ Finished syncing all positions from Kraken ({len(positions)} symbols)")
 
 # =======================
 # Orders & positions
