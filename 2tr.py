@@ -380,38 +380,37 @@ def sync_positions_from_kraken():
                 "spot": False
             })
 
-    # -----------------------------
-    # 2️⃣ Sync spot balances as pseudo-positions
-    # -----------------------------
+    # ======================
+    # Sync spot balances
+    # ======================
     bal_resp = kraken_private_request("Balance", {})
     if bal_resp.get("error"):
         print(Fore.RED + f"Failed to fetch balances: {bal_resp['error']}")
     else:
         balances = bal_resp.get("result", {})
-
         for asset, amount_str in balances.items():
             amount = float(amount_str)
             if amount <= 0:
                 continue
-
+    
             # Convert Kraken asset name to standard symbol
-            # Strip leading X or Z (Kraken encoding)
             base = asset.replace("X", "").replace("Z", "")
             symbol = base + "USD"
-
-            # Skip if already tracked as spot
+    
+            # Skip if already tracked
             spot_exists = any(p.get("spot", False) for p in positions.get(symbol, []))
             if spot_exists:
                 continue
-
-            # Fetch current price
+    
+            # Fetch current price for exposure calculation
             price = get_current_price(symbol)
-            if price is None:
+            if not price:
                 print(Fore.YELLOW + f"⚠️ Price not available for {symbol}, skipping spot position")
                 continue
-
+    
             exposure = amount * price
-
+    
+            # Add spot pseudo-position
             positions.setdefault(symbol, []).append({
                 "side": "BUY",
                 "entry_price": price,
