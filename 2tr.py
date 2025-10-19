@@ -99,6 +99,10 @@ last_scanned = {s: None for s in symbols}
 
 
 def kraken_request(uri_path, data=None):
+    """
+    Direct Kraken API request using custom HMAC signature.
+    This bypasses the krakenex library and works with your bot credentials.
+    """
     if data is None:
         data = {}
 
@@ -106,16 +110,20 @@ def kraken_request(uri_path, data=None):
     data["nonce"] = str(int(time.time() * 1000))
     postdata = "&".join([f"{k}={v}" for k, v in data.items()])
 
+    # HMAC-SHA512 signature
     message = (data["nonce"] + postdata).encode()
     sha256 = hashlib.sha256(message).digest()
     mac = hmac.new(base64.b64decode(api_secret), uri_path.encode() + sha256, hashlib.sha512)
     sigdigest = base64.b64encode(mac.digest())
     headers["API-Sign"] = sigdigest.decode()
 
+    # POST request
     resp = requests.post(API_URL + uri_path, headers=headers, data=data)
     resp_json = resp.json()
+
     if resp_json.get("error"):
         raise Exception(f"Kraken API error: {resp_json['error']}")
+
     return resp_json["result"]
 
 def startup_sync_positions():
