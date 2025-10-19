@@ -211,26 +211,42 @@ def startup_sync_positions():
     print(Fore.GREEN + "✅ Startup sync complete. Positions are ready.")
 
 def sync_spot_positions_from_kraken():
-    """Load all positive spot balances from Kraken as pseudo-positions."""
-    balances = kraken_request("/0/private/Balance")
+    """
+    Load all positive spot balances from Kraken as pseudo-positions.
+    Uses krakenex.API object (kraken) instead of custom API requests.
+    """
+    resp = kraken.query_private("Balance")
+    if resp.get("error"):
+        print(Fore.RED + f"Failed to fetch balances: {resp['error']}")
+        return
+
+    balances = resp.get("result", {})
+
     for asset, amount_str in balances.items():
         amount = float(amount_str)
         if amount <= 0:
             continue
 
-        # Generate the trading pair symbol automatically
-        symbol = asset.replace("X", "").replace("Z", "") + "USD"
+        # Convert Kraken asset name to symbol (remove leading X or Z)
+        base = asset.replace("X", "").replace("Z", "")
+        symbol = base + "USD"
 
-        # Avoid duplicates
+        # Skip if already tracked as spot
         spot_exists = any(p.get("spot", False) for p in positions.get(symbol, []))
         if spot_exists:
             continue
 
-        price = get_current_price(symbol) or 0
+        # Fetch current price
+        price = get_current_price(symbol)
+        if price is None:
+            print(Fore.YELLOW + f"⚠️ Price not available for {symbol}, skipping spot position")
+            continue
+
         exposure = amount * price
 
+        # Add as spot position
         positions.setdefault(symbol, []).append({
-            "side": "buy",
+            "side": "BUY",
             "entry_price": price,
             "volume": amount,
             "exposure": exposure,
@@ -238,7 +254,7 @@ def sync_spot_positions_from_kraken():
             "bot_initiated": False,
             "spot": True
         })
-        print(f"🔹 Spot position loaded: {symbol} | Qty: {amount} | Price: {price}")
+        print(Fore.GREEN + f"🟢 Spot position loaded: {symbol} | Qty: {amount} | Price: {price:.4f}")
 
     save_positions()
 
