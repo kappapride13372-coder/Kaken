@@ -6,6 +6,7 @@ import krakenex
 import csv
 import os
 import json
+import requests
 
 # =======================
 # Initialize
@@ -94,6 +95,31 @@ last_scanned = {s: None for s in symbols}
 # =======================
 # Pair cache handling
 # =======================
+
+
+def get_current_price(symbol, retries=3, delay=5):
+    pair = resolve_pair(symbol)
+    if not pair:
+        print(Fore.RED + f"❌ Unknown Kraken pair for {symbol}")
+        return None
+
+    for attempt in range(retries):
+        try:
+            resp = kraken.query_public("Ticker", {"pair": pair})
+            if resp.get("error"):
+                print(Fore.RED + f"Price error {symbol}: {resp['error']}")
+                return None
+            result_key = list(resp["result"].keys())[0]
+            return float(resp["result"][result_key]["c"][0])
+        except requests.exceptions.RequestException as e:  # catches all requests errors
+            print(Fore.YELLOW + f"⚠️ Request error fetching {symbol}: {e}. Retry {attempt+1}/{retries}")
+            time.sleep(delay)
+        except Exception as e:
+            print(Fore.RED + f"❌ Unexpected error fetching {symbol}: {e}")
+            return None
+    print(Fore.RED + f"❌ Failed to fetch price for {symbol} after {retries} retries")
+    return None
+
 def load_pair_cache():
     if os.path.isfile(PAIR_CACHE_FILE):
         try:
