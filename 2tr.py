@@ -95,7 +95,89 @@ last_scanned = {s: None for s in symbols}
 # =======================
 # Pair cache handling
 # =======================
+def startup_sync_positions():
+    """
+    Load positions from file, sync with Kraken, and add spot balances.
+    Ensures we do not overwrite existing positions.
+    """
+    # 1️⃣ Load local positions file
+    load_positions()  # safely populates `positions`
 
+    # 2️⃣ Sync open margin/futures positions from Kraken
+    resp = kraken_private_request("OpenPositions", {})
+    if resp.get("error"):
+        print(Fore.RED + f"Failed to fetch margin/futures positions: {resp['error']}")
+    else:
+        result = resp.get("result", {})
+        for txid, pos in result.items():
+            pair = pos['pair']
+            symbol = resolve_symbol_from_pair(pair) or pair  # fallback if pair not in cache
+            volume = float(pos['vol'])
+            entry_price = float(pos['cost']) / volume if volume > 0 else 0
+            leverage = float(pos.get('leverage', '1').replace(':1', ''))
+            userref = int(pos.get('userref', 0))
+            side = pos['type']
+
+            # Skip if already tracked
+            exists = any(p.get("txid") == txid for p in positions.get(symbol, []))
+            if exists:
+                continue
+
+            positions.setdefault(symbol, []).append({
+                "txid": txid,
+                "side": side,
+                "entry_price": entry_price,
+                "volume": volume,
+                "exposure": float(pos['cost']),
+                "leverage": leverage,
+                "bot_initiated": (userref == BOT_USERREF),
+                "userref": userref,
+                "spot": False
+            })
+        print(Fore.GREEN + f"✅ Synced {len(result)} margin/futures positions from Kraken")
+
+    # 3️⃣ Sync spot balances
+    bal_resp = kraken_private_request("Balance", {})
+    if bal_resp.get("error"):
+        print(Fore.RED + f"Failed to fetch spot balances: {bal_resp['error']}")
+    else:
+        balances = bal_resp.get("result", {})
+        for asset, amount_str in balances.items():
+            amount = float(amount_str)
+            if amount <= 0:
+                continue
+
+            # Convert asset to tradable symbol
+            symbol = ASSET_SYMBOL_MAP.get(asset)
+            if not symbol:
+                continue  # skip unsupported assets
+
+            # Skip if already tracked as spot
+            existing_spot = any(p.get("spot", False) for p in positions.get(symbol, []))
+            if existing_spot:
+                continue
+
+            current_price = get_current_price(symbol)
+            if not current_price:
+                continue
+
+            positions.setdefault(symbol, []).append({
+                "side": "BUY",
+                "entry_price": current_price,
+                "volume": amount,
+                "exposure": amount * current_price,
+                "leverage": 1,
+                "bot_initiated": False,
+                "spot": True
+            })
+            print(Fore.GREEN + f"🟢 Spot position added: {symbol} | Qty={amount} | Price={current_price:.4f}")
+
+    # 4️⃣ Flag all bot-initiated positions
+    flag_all_open_positions_as_bot_initiated()
+
+    # 5️⃣ Save positions to file
+    save_positions()
+    print(Fore.GREEN + "✅ Startup sync complete. Positions are ready.")
 
 def get_current_price(symbol, retries=3, delay=5):
     pair = resolve_pair(symbol)
@@ -771,6 +853,7 @@ if __name__ == "__main__":
     load_positions()
     sync_positions_from_kraken()
     flag_all_open_positions_as_bot_initiated()
+    startup_sync_positions()
 
     print(Fore.GREEN + "✅ Bot ready. Tracking positions for take-profit and stop-loss.")
 
