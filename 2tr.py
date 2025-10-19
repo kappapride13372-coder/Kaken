@@ -179,6 +179,44 @@ def startup_sync_positions():
     save_positions()
     print(Fore.GREEN + "✅ Startup sync complete. Positions are ready.")
 
+def sync_spot_positions_from_kraken():
+    """Fetch spot balances from Kraken and add them as pseudo-positions if not already tracked."""
+    bal_resp = kraken_private_request("Balance", {})
+    if bal_resp.get("error"):
+        print(Fore.RED + f"Failed to fetch balances: {bal_resp['error']}")
+        return
+
+    balances = bal_resp.get("result", {})
+    for asset, amount_str in balances.items():
+        amount = float(amount_str)
+        if amount <= 0:
+            continue
+
+        # Convert asset to symbol automatically
+        symbol = asset.replace("X", "").replace("Z", "") + "USD"
+
+        # Avoid duplicate spot positions
+        spot_exists = any(p.get("spot", False) for p in positions.get(symbol, []))
+        if spot_exists:
+            continue
+
+        # Get current price
+        price = get_current_price(symbol) or 0
+        exposure = amount * price
+
+        positions.setdefault(symbol, []).append({
+            "side": "buy",
+            "entry_price": price,
+            "volume": amount,
+            "exposure": exposure,
+            "leverage": 1.0,
+            "bot_initiated": False,
+            "spot": True
+        })
+        print(Fore.GREEN + f"🔹 Spot position loaded: {symbol} | Qty: {amount} | Price: {price}")
+
+    save_positions()
+
 def get_current_price(symbol, retries=3, delay=5):
     pair = resolve_pair(symbol)
     if not pair:
@@ -851,9 +889,9 @@ if __name__ == "__main__":
 
     # Load previous state
     load_positions()
-    sync_positions_from_kraken()
+    sync_positions_from_kraken()  # sync margin/futures positions
+    sync_spot_positions_from_kraken()  # sync spot balances properly
     flag_all_open_positions_as_bot_initiated()
-    startup_sync_positions()
 
     print(Fore.GREEN + "✅ Bot ready. Tracking positions for take-profit and stop-loss.")
 
