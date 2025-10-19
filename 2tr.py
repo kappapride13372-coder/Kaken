@@ -337,12 +337,17 @@ def cancel_all_orders_for_symbol(symbol):
 
 # Map asset tickers to tradable symbols for spot
 def sync_positions_from_kraken():
-    # ======================================
-    # 🔹 STEP 1: Sync margin/futures positions
-    # ======================================
+    """
+    Sync all open positions from Kraken at startup.
+    This includes margin/futures positions AND spot balances.
+    Spot positions are added as pseudo-positions for tracking.
+    """
+    # -----------------------------
+    # 1️⃣ Sync margin/futures positions
+    # -----------------------------
     resp = kraken_private_request("OpenPositions", {})
     if resp.get("error"):
-        print(Fore.RED + f"Failed to sync positions: {resp['error']}")
+        print(Fore.RED + f"Failed to sync margin/futures positions: {resp['error']}")
     else:
         result = resp.get("result", {})
         for txid, pos in result.items():
@@ -358,7 +363,7 @@ def sync_positions_from_kraken():
             userref = int(pos.get('userref', 0))
             side = pos['type']
 
-            # check if already in positions
+            # Skip if already in memory
             exists = any(p.get("txid") == txid for p in positions.get(symbol, []))
             if exists:
                 continue
@@ -375,42 +380,48 @@ def sync_positions_from_kraken():
                 "spot": False
             })
 
-    # ======================================
-    # 🔹 STEP 2: Sync spot balances as pseudo-positions
-    # ======================================
+    # -----------------------------
+    # 2️⃣ Sync spot balances as pseudo-positions
+    # -----------------------------
     bal_resp = kraken_private_request("Balance", {})
     if bal_resp.get("error"):
         print(Fore.RED + f"Failed to fetch balances: {bal_resp['error']}")
     else:
         balances = bal_resp.get("result", {})
+
         for asset, amount_str in balances.items():
             amount = float(amount_str)
             if amount <= 0:
                 continue
 
-            # find matching symbol
-            symbol = ASSET_SYMBOL_MAP.get(asset)
-            if not symbol:
-                continue  # skip unsupported assets
+            # Convert Kraken asset name to standard symbol
+            # Strip leading X or Z (Kraken encoding)
+            base = asset.replace("X", "").replace("Z", "")
+            symbol = base + "USD"
 
-            # check if already tracked
+            # Skip if already tracked as spot
             spot_exists = any(p.get("spot", False) for p in positions.get(symbol, []))
             if spot_exists:
                 continue
 
-            # fetch current price for exposure
-            price = get_current_price(symbol) or 0
+            # Fetch current price
+            price = get_current_price(symbol)
+            if price is None:
+                print(Fore.YELLOW + f"⚠️ Price not available for {symbol}, skipping spot position")
+                continue
+
             exposure = amount * price
 
             positions.setdefault(symbol, []).append({
-                "side": "buy",
+                "side": "BUY",
                 "entry_price": price,
                 "volume": amount,
                 "exposure": exposure,
                 "leverage": 1.0,
-                "bot_initiated": False,  # or True if you want the bot to auto-manage
+                "bot_initiated": False,
                 "spot": True
             })
+            print(Fore.GREEN + f"🟢 Spot position synced: {symbol} | Qty={amount} | Price={price:.4f} | Exposure=${exposure:.2f}")
 
     save_positions()
 
