@@ -108,7 +108,7 @@ def kraken_request(uri_path, data=None):
 
     message = (data["nonce"] + postdata).encode()
     sha256 = hashlib.sha256(message).digest()
-    mac = hmac.new(base64.b64decode(API_SECRET), uri_path.encode() + sha256, hashlib.sha512)
+    mac = hmac.new(base64.b64decode(api_secret), uri_path.encode() + sha256, hashlib.sha512)
     sigdigest = base64.b64encode(mac.digest())
     headers["API-Sign"] = sigdigest.decode()
 
